@@ -38,8 +38,14 @@ directory:
 
 ```text
 # source [target]
+~/.work-dotfiles
 ~/.dotfiles
 ```
+
+Repo order matters: sources earlier in the file have higher priority because
+they are linked first. On a work computer, you might configure
+`~/.work-dotfiles` before `~/.dotfiles`; on a personal computer, you might only
+configure `~/.dotfiles`.
 
 If target is not provided, `dfman` uses `$HOME`.
 Paths must be absolute or start with `~`.
@@ -93,8 +99,8 @@ dfman repo-rm '~/.work-dotfiles'
 ### `dfman repo-sync`
 
 Synchronizes configured git repos. It stages all changes, commits them as
-`Auto-Sync (YYYY-MM-DD HH:MM:SS)`, pulls with rebase, then pushes. If pull hits
-conflicts, `dfman` warns and leaves the repo for manual resolution.
+`sync by {hostname} at YYYY-MM-DD HH:MM:SS`, pulls with rebase, then pushes. If
+pull hits conflicts, `dfman` warns and leaves the repo for manual resolution.
 
 ```bash
 dfman repo-sync
@@ -108,8 +114,9 @@ dfman repo-sync --repo '~/.dotfiles'
 
 ### `dfman create`
 
-Imports an existing file into a specific configured source, then links it back
-to the configured target. Nested paths are stored using `#` separators.
+Imports an existing file into a specific configured source. Nested paths are
+stored using `#` separators. After importing and optionally removing the
+original file, run `dfman link` when you are ready to create the symlink.
 
 ```bash
 dfman create --repo '~/.dotfiles' "$HOME/.zshrc"

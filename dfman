@@ -545,7 +545,7 @@ cmd_create() {
         echo "Skipped removal of $full_path"
     fi
 
-    cmd_link --repo "$SELECTED_SOURCE_DIR"
+    echo "Run dfman link --repo '$SELECTED_SOURCE_DIR' when you are ready to link it."
 }
 
 cmd_doctor() {
@@ -751,7 +751,7 @@ sync_repo_source() {
             return 1
         fi
 
-        commit_message="Auto-Sync ($(date '+%Y-%m-%d %H:%M:%S'))"
+        commit_message="sync by $(hostname) at $(date '+%Y-%m-%d %H:%M:%S')"
         if ! git -C "$source_dir" commit -m "$commit_message"; then
             echo -e "\033[33mWarning: failed to commit changes in $source_dir\033[0m"
             return 1
