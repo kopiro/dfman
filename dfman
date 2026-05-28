@@ -83,6 +83,18 @@ validate_config_value() {
     fi
 }
 
+log_success() {
+    printf '\033[32m%s\033[0m\n' "$*"
+}
+
+log_warning() {
+    printf '\033[33mWarning: %s\033[0m\n' "$*"
+}
+
+log_blocked() {
+    printf '\033[31m%s\033[0m\n' "$*"
+}
+
 current_executable_path() {
     local script_path="${BASH_SOURCE[0]}"
 
@@ -303,7 +315,7 @@ link_source() {
         if [ -L "$symlink_target" ]; then
             current_target=$(readlink "$symlink_target")
             if [ "$current_target" != "$dotfile" ]; then
-                echo -e "\033[33mWarning: <$symlink_target> points to <$current_target>\033[0m"
+                log_warning "$symlink_target already points to $current_target, expected $dotfile"
                 if [ "$force" = true ]; then
                     if [ "$dry_run" = true ]; then
                         echo "Would remove symlink: $symlink_target"
@@ -313,20 +325,24 @@ link_source() {
 
                     read -p "Delete and replace? [y/N] " confirm < /dev/tty
                     if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                        echo "Removing symlink: $symlink_target"
                         rm "$symlink_target"
                     else
+                        log_blocked "Skipped: $symlink_target already points to $current_target"
                         continue
                     fi
                 else
+                    log_blocked "Skipped: $symlink_target already points to $current_target"
                     continue
                 fi
             else
+                log_success "OK: $symlink_target -> $dotfile"
                 continue
             fi
         fi
 
         if [ -d "$symlink_target" ]; then
-            echo -e "\033[33mWarning: <$symlink_target> is a directory\033[0m"
+            log_warning "$symlink_target already exists as a directory"
             if [ "$force" = true ]; then
                 if [ "$dry_run" = true ]; then
                     echo "Would remove directory: $symlink_target"
@@ -336,17 +352,20 @@ link_source() {
 
                 read -p "Delete and replace? [y/N] " confirm < /dev/tty
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    echo "Removing directory: $symlink_target"
                     rm -rf "$symlink_target"
                 else
+                    log_blocked "Skipped: $symlink_target is a directory"
                     continue
                 fi
             else
+                log_blocked "Skipped: $symlink_target is a directory"
                 continue
             fi
         fi
 
         if [ -f "$symlink_target" ]; then
-            echo -e "\033[33mWarning: <$symlink_target> is a file\033[0m"
+            log_warning "$symlink_target already exists as a file"
             if [ "$force" = true ]; then
                 if [ "$dry_run" = true ]; then
                     echo "Would remove file: $symlink_target"
@@ -356,11 +375,14 @@ link_source() {
 
                 read -p "Delete and replace? [y/N] " confirm < /dev/tty
                 if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    echo "Removing file: $symlink_target"
                     rm "$symlink_target"
                 else
+                    log_blocked "Skipped: $symlink_target is a file"
                     continue
                 fi
             else
+                log_blocked "Skipped: $symlink_target is a file"
                 continue
             fi
         fi

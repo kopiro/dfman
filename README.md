@@ -44,21 +44,24 @@ directory:
 If target is not provided, `dfman` uses `$HOME`.
 Paths must be absolute or start with `~`.
 
-## Usage
+## Commands
 
-Link all configured dotfiles in config order:
+### `dfman link`
+
+Links files from configured source repos into their target directories. When
+multiple repos are configured, they are linked in config order.
 
 ```bash
 dfman link
 ```
 
-Link a single configured source:
+Link only one configured source:
 
 ```bash
 dfman link --repo '~/.work-dotfiles'
 ```
 
-Preview link changes without writing files:
+Preview changes without writing files:
 
 ```bash
 dfman link --dry-run
@@ -70,53 +73,65 @@ Replace conflicting files or symlinks interactively:
 dfman link -f
 ```
 
-Add a specific source with an optional target:
+### `dfman repo-add`
+
+Adds a source repo to `$HOME/.config/dfman.conf`. The target is optional and
+defaults to `$HOME`.
 
 ```bash
 dfman repo-add '~/.work-dotfiles' '~'
 ```
 
-Remove a configured source:
+### `dfman repo-rm`
+
+Removes a configured source from `$HOME/.config/dfman.conf`.
 
 ```bash
 dfman repo-rm '~/.work-dotfiles'
 ```
 
-Commit, pull, and push all configured repos:
+### `dfman repo-sync`
+
+Synchronizes configured git repos. It stages all changes, commits them as
+`Auto-Sync (YYYY-MM-DD HH:MM:SS)`, pulls with rebase, then pushes. If pull hits
+conflicts, `dfman` warns and leaves the repo for manual resolution.
 
 ```bash
 dfman repo-sync
 ```
 
-Sync a single configured repo:
+Sync only one configured source:
 
 ```bash
 dfman repo-sync --repo '~/.dotfiles'
 ```
 
-`repo-sync` stages all changes, commits them as
-`Auto-Sync (YYYY-MM-DD HH:MM:SS)`, pulls with rebase, then pushes. If pull hits
-conflicts, `dfman` warns and leaves the repo for manual resolution.
+### `dfman create`
 
-Import an existing file into a specific configured source:
+Imports an existing file into a specific configured source, then links it back
+to the configured target. Nested paths are stored using `#` separators.
 
 ```bash
 dfman create --repo '~/.dotfiles' "$HOME/.zshrc"
 ```
 
-Find broken symlinks in all configured source directories:
+### `dfman doctor`
+
+Finds broken symlinks inside configured source repos.
 
 ```bash
 dfman doctor
 ```
 
-Find broken symlinks in a single configured source:
+Check only one configured source:
 
 ```bash
 dfman doctor --repo '~/.work-dotfiles'
 ```
 
-Update `dfman` from GitHub:
+### `dfman self-update`
+
+Updates the installed `dfman` executable from GitHub.
 
 ```bash
 dfman self-update
