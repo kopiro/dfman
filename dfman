@@ -332,7 +332,6 @@ link_source() {
                         continue
                     fi
                 else
-                    log_blocked "Skipped: $symlink_target already points to $current_target"
                     continue
                 fi
             else
