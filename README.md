@@ -55,10 +55,17 @@ Paths must be absolute or start with `~`.
 ### `dfman link`
 
 Links files from configured source repos into their target directories. When
-multiple repos are configured, they are linked in config order.
+multiple repos are configured, they are linked in config order. Existing valid
+links are only printed when verbose output is enabled.
 
 ```bash
 dfman link
+```
+
+Show existing valid links:
+
+```bash
+dfman link -v
 ```
 
 Link only one configured source:

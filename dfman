@@ -14,7 +14,7 @@ usage() {
     echo "  $CONFIG_FILE"
     echo ""
     echo "Commands:"
-    echo "  link [-f] [--dry-run] [--repo r] Symlink dotfiles to target directory"
+    echo "  link [-f] [-v] [--dry-run] [--repo r] Symlink dotfiles to target directory"
     echo "  create --repo r path Import a file into dotfiles"
     echo "  doctor [--repo repo] Find broken symlinks"
     echo "  repo-add <src> [tgt] Add a source to the config"
@@ -290,6 +290,7 @@ link_source() {
     local target_dir="$2"
     local force="$3"
     local dry_run="$4"
+    local verbose="$5"
 
     echo "Linking source: $source_dir -> $target_dir"
 
@@ -335,7 +336,9 @@ link_source() {
                     continue
                 fi
             else
-                log_success "OK: $symlink_target -> $dotfile"
+                if [ "$verbose" = true ]; then
+                    log_success "OK: $symlink_target -> $dotfile"
+                fi
                 continue
             fi
         fi
@@ -398,6 +401,7 @@ link_source() {
 cmd_link() {
     FORCE=false
     DRY_RUN=false
+    VERBOSE=false
     local repo_arg=""
 
     while [ "$#" -gt 0 ]; do
@@ -406,13 +410,17 @@ cmd_link() {
                 FORCE=true
                 shift
                 ;;
+            -v)
+                VERBOSE=true
+                shift
+                ;;
             --dry-run)
                 DRY_RUN=true
                 shift
                 ;;
             --repo)
                 if [ -z "${2:-}" ]; then
-                    echo "Usage: dfman link [-f] [--dry-run] [--repo <source>]"
+                    echo "Usage: dfman link [-f] [-v] [--dry-run] [--repo <source>]"
                     exit 1
                 fi
                 repo_arg="$2"
@@ -421,13 +429,13 @@ cmd_link() {
             --repo=*)
                 repo_arg="${1#--repo=}"
                 if [ -z "$repo_arg" ]; then
-                    echo "Usage: dfman link [-f] [--dry-run] [--repo <source>]"
+                    echo "Usage: dfman link [-f] [-v] [--dry-run] [--repo <source>]"
                     exit 1
                 fi
                 shift
                 ;;
             *)
-                echo "Usage: dfman link [-f] [--dry-run] [--repo <source>]"
+                echo "Usage: dfman link [-f] [-v] [--dry-run] [--repo <source>]"
                 exit 1
                 ;;
         esac
@@ -445,13 +453,13 @@ cmd_link() {
     if [ -n "$repo_arg" ]; then
         select_config_for_repo "$repo_arg"
         require_source_exists "$SELECTED_SOURCE_DIR"
-        link_source "$SELECTED_SOURCE_DIR" "$SELECTED_TARGET_DIR" "$FORCE" "$DRY_RUN"
+        link_source "$SELECTED_SOURCE_DIR" "$SELECTED_TARGET_DIR" "$FORCE" "$DRY_RUN" "$VERBOSE"
     else
         require_all_sources_exist
 
         local index
         for index in "${!CONFIG_SOURCES[@]}"; do
-            link_source "${CONFIG_SOURCES[$index]}" "${CONFIG_TARGETS[$index]}" "$FORCE" "$DRY_RUN"
+            link_source "${CONFIG_SOURCES[$index]}" "${CONFIG_TARGETS[$index]}" "$FORCE" "$DRY_RUN" "$VERBOSE"
         done
     fi
 
