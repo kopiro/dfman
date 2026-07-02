@@ -120,6 +120,12 @@ Sync only one configured source:
 dfman repo-sync --repo '~/.dotfiles'
 ```
 
+Use a specific SSH key for pull and push:
+
+```bash
+dfman sync --repo '~/.dotfiles' --ssh-key '~/.ssh/id_ed25519_work'
+```
+
 ### `dfman create`
 
 Imports an existing file into a specific configured source. Nested paths are

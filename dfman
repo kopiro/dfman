@@ -19,8 +19,8 @@ usage() {
     echo "  doctor [--repo repo] Find broken symlinks"
     echo "  repo-add <src> [tgt] Add a source to the config"
     echo "  repo-rm <source>     Remove a source from the config"
-    echo "  repo-sync [--repo r] Commit, pull, and push repos"
-    echo "  sync [--repo r]      Alias of repo-sync"
+    echo "  repo-sync [--repo r] [--ssh-key k] Commit, pull, and push repos"
+    echo "  sync [--repo r] [--ssh-key k]      Alias of repo-sync"
     echo "  self-update          Update dfman from GitHub"
     exit 1
 }
@@ -94,6 +94,10 @@ log_warning() {
 
 log_blocked() {
     printf '\033[31m%s\033[0m\n' "$*"
+}
+
+repo_sync_usage() {
+    echo "Usage: dfman repo-sync [--repo <source>] [--ssh-key <path>]"
 }
 
 current_executable_path() {
@@ -731,6 +735,7 @@ cmd_repo_rm() {
 
 sync_repo_source() {
     local source_dir="$1"
+    local ssh_key="${2:-}"
     local commit_message
     local diff_status
 
@@ -767,26 +772,48 @@ sync_repo_source() {
         fi
     fi
 
-    if ! git -C "$source_dir" pull --rebase; then
+    if ! git_remote "$source_dir" "$ssh_key" pull --rebase; then
         echo -e "\033[33mWarning: pull failed in $source_dir; resolve conflicts or git state manually, then retry\033[0m"
         return 1
     fi
 
-    if ! git -C "$source_dir" push; then
+    if ! git_remote "$source_dir" "$ssh_key" push; then
         echo -e "\033[33mWarning: push failed in $source_dir\033[0m"
         return 1
     fi
 }
 
+build_git_ssh_command() {
+    local ssh_key="$1"
+    local quoted_ssh_key
+
+    printf -v quoted_ssh_key "%q" "$ssh_key"
+    printf "ssh -i %s -o IdentitiesOnly=yes" "$quoted_ssh_key"
+}
+
+git_remote() {
+    local source_dir="$1"
+    local ssh_key="$2"
+
+    shift 2
+
+    if [ -n "$ssh_key" ]; then
+        GIT_SSH_COMMAND="$(build_git_ssh_command "$ssh_key")" git -C "$source_dir" "$@"
+    else
+        git -C "$source_dir" "$@"
+    fi
+}
+
 cmd_repo_sync() {
     local repo_arg=""
+    local ssh_key_arg=""
     local failed=false
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --repo)
                 if [ -z "${2:-}" ]; then
-                    echo "Usage: dfman repo-sync [--repo <source>]"
+                    repo_sync_usage
                     exit 1
                 fi
                 repo_arg="$2"
@@ -795,22 +822,44 @@ cmd_repo_sync() {
             --repo=*)
                 repo_arg="${1#--repo=}"
                 if [ -z "$repo_arg" ]; then
-                    echo "Usage: dfman repo-sync [--repo <source>]"
+                    repo_sync_usage
                     exit 1
                 fi
                 shift
                 ;;
+            --ssh-key)
+                if [ -z "${2:-}" ]; then
+                    repo_sync_usage
+                    exit 1
+                fi
+                ssh_key_arg=$(expand_home "$2")
+                shift 2
+                ;;
+            --ssh-key=*)
+                ssh_key_arg="${1#--ssh-key=}"
+                if [ -z "$ssh_key_arg" ]; then
+                    repo_sync_usage
+                    exit 1
+                fi
+                ssh_key_arg=$(expand_home "$ssh_key_arg")
+                shift
+                ;;
             *)
-                echo "Usage: dfman repo-sync [--repo <source>]"
+                repo_sync_usage
                 exit 1
                 ;;
         esac
     done
 
+    if [ -n "$ssh_key_arg" ] && { [ ! -f "$ssh_key_arg" ] || [ ! -r "$ssh_key_arg" ]; }; then
+        echo "Error: SSH key does not exist or is not readable: $ssh_key_arg"
+        exit 1
+    fi
+
     load_config
     if [ -n "$repo_arg" ]; then
         select_config_for_repo "$repo_arg"
-        if ! sync_repo_source "$SELECTED_SOURCE_DIR"; then
+        if ! sync_repo_source "$SELECTED_SOURCE_DIR" "$ssh_key_arg"; then
             exit 1
         fi
         return
@@ -818,7 +867,7 @@ cmd_repo_sync() {
 
     local source_dir
     for source_dir in "${CONFIG_SOURCES[@]}"; do
-        if ! sync_repo_source "$source_dir"; then
+        if ! sync_repo_source "$source_dir" "$ssh_key_arg"; then
             failed=true
         fi
     done
