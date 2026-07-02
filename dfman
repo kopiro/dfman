@@ -8,7 +8,7 @@ CONFIG_SOURCES=()
 CONFIG_TARGETS=()
 
 usage() {
-    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|self-update> [options]"
+    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|sync|self-update> [options]"
     echo ""
     echo "Config:"
     echo "  $CONFIG_FILE"
@@ -20,6 +20,7 @@ usage() {
     echo "  repo-add <src> [tgt] Add a source to the config"
     echo "  repo-rm <source>     Remove a source from the config"
     echo "  repo-sync [--repo r] Commit, pull, and push repos"
+    echo "  sync [--repo r]      Alias of repo-sync"
     echo "  self-update          Update dfman from GitHub"
     exit 1
 }
@@ -892,7 +893,7 @@ case "${1:-}" in
         shift
         cmd_repo_rm "$@"
         ;;
-    repo-sync)
+    repo-sync|sync)
         shift
         cmd_repo_sync "$@"
         ;;

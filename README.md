@@ -108,6 +108,7 @@ dfman repo-rm '~/.work-dotfiles'
 Synchronizes configured git repos. It stages all changes, commits them as
 `sync by {hostname} at YYYY-MM-DD HH:MM:SS`, pulls with rebase, then pushes. If
 pull hits conflicts, `dfman` warns and leaves the repo for manual resolution.
+`dfman sync` is an alias of `dfman repo-sync`.
 
 ```bash
 dfman repo-sync
