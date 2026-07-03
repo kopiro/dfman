@@ -865,12 +865,28 @@ cmd_repo_sync() {
         return
     fi
 
-    local source_dir
-    for source_dir in "${CONFIG_SOURCES[@]}"; do
-        if ! sync_repo_source "$source_dir" "$ssh_key_arg"; then
+    # Sync all repos in parallel. Each job writes to its own log file so the
+    # output of concurrent syncs is printed grouped per repo, not interleaved.
+    local index
+    local log_dir
+    local pids=()
+
+    log_dir=$(mktemp -d)
+
+    for index in "${!CONFIG_SOURCES[@]}"; do
+        sync_repo_source "${CONFIG_SOURCES[$index]}" "$ssh_key_arg" \
+            > "$log_dir/$index.log" 2>&1 &
+        pids+=("$!")
+    done
+
+    for index in "${!pids[@]}"; do
+        if ! wait "${pids[$index]}"; then
             failed=true
         fi
+        cat "$log_dir/$index.log"
     done
+
+    rm -rf "$log_dir"
 
     if [ "$failed" = true ]; then
         exit 1
