@@ -19,8 +19,8 @@ usage() {
     echo "  doctor [--repo repo] Find broken symlinks"
     echo "  repo-add <src> [tgt] Add a source to the config"
     echo "  repo-rm <source>     Remove a source from the config"
-    echo "  repo-sync [--repo r] [--ssh-key k] Commit, pull, and push repos"
-    echo "  sync [--repo r] [--ssh-key k]      Alias of repo-sync"
+    echo "  repo-sync [--reset] [--repo r] [--ssh-key k] Commit, pull, and push repos"
+    echo "  sync [--reset] [--repo r] [--ssh-key k]      Alias of repo-sync"
     echo "  self-update          Update dfman from GitHub"
     exit 1
 }
@@ -97,7 +97,7 @@ log_blocked() {
 }
 
 repo_sync_usage() {
-    echo "Usage: dfman repo-sync [--repo <source>] [--ssh-key <path>]"
+    echo "Usage: dfman repo-sync [--reset] [--repo <source>] [--ssh-key <path>]"
 }
 
 current_executable_path() {
@@ -736,8 +736,10 @@ cmd_repo_rm() {
 sync_repo_source() {
     local source_dir="$1"
     local ssh_key="${2:-}"
+    local reset="${3:-false}"
     local commit_message
     local diff_status
+    local branch
 
     echo "Syncing repo: $source_dir"
 
@@ -749,6 +751,35 @@ sync_repo_source() {
     if ! git -C "$source_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         echo -e "\033[33mWarning: source is not a git repo: $source_dir\033[0m"
         return 1
+    fi
+
+    if [ "$reset" = true ]; then
+        branch=$(git -C "$source_dir" symbolic-ref --quiet --short HEAD) || {
+            echo -e "\033[33mWarning: cannot reset detached HEAD in $source_dir\033[0m"
+            return 1
+        }
+
+        # Reset mode is an explicit recovery operation: origin is authoritative,
+        # so local commits, tracked edits, and untracked files must not survive.
+        # Fetch before changing the worktree so a network failure leaves local
+        # state untouched instead of resetting to a potentially stale ref.
+        if ! git_remote "$source_dir" "$ssh_key" fetch origin "$branch"; then
+            echo -e "\033[33mWarning: failed to fetch origin/$branch in $source_dir\033[0m"
+            return 1
+        fi
+
+        if ! git -C "$source_dir" reset --hard "origin/$branch"; then
+            echo -e "\033[33mWarning: failed to reset $source_dir to origin/$branch\033[0m"
+            return 1
+        fi
+
+        if ! git -C "$source_dir" clean -fd; then
+            echo -e "\033[33mWarning: failed to remove untracked files in $source_dir\033[0m"
+            return 1
+        fi
+
+        echo "Reset to origin/$branch"
+        return
     fi
 
     if ! git -C "$source_dir" add -A; then
@@ -807,10 +838,15 @@ git_remote() {
 cmd_repo_sync() {
     local repo_arg=""
     local ssh_key_arg=""
+    local reset=false
     local failed=false
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
+            --reset)
+                reset=true
+                shift
+                ;;
             --repo)
                 if [ -z "${2:-}" ]; then
                     repo_sync_usage
@@ -859,7 +895,7 @@ cmd_repo_sync() {
     load_config
     if [ -n "$repo_arg" ]; then
         select_config_for_repo "$repo_arg"
-        if ! sync_repo_source "$SELECTED_SOURCE_DIR" "$ssh_key_arg"; then
+        if ! sync_repo_source "$SELECTED_SOURCE_DIR" "$ssh_key_arg" "$reset"; then
             exit 1
         fi
         return
@@ -874,7 +910,7 @@ cmd_repo_sync() {
     log_dir=$(mktemp -d)
 
     for index in "${!CONFIG_SOURCES[@]}"; do
-        sync_repo_source "${CONFIG_SOURCES[$index]}" "$ssh_key_arg" \
+        sync_repo_source "${CONFIG_SOURCES[$index]}" "$ssh_key_arg" "$reset" \
             > "$log_dir/$index.log" 2>&1 &
         pids+=("$!")
     done

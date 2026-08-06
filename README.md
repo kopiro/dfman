@@ -126,6 +126,19 @@ Use a specific SSH key for pull and push:
 dfman sync --repo '~/.dotfiles' --ssh-key '~/.ssh/id_ed25519_work'
 ```
 
+Discard all local commits, tracked changes, and untracked files, then reset the
+current branch to its latest state on `origin`:
+
+```bash
+dfman sync --reset
+```
+
+Reset only one configured source:
+
+```bash
+dfman sync --reset --repo '~/.dotfiles'
+```
+
 ### `dfman create`
 
 Imports an existing file into a specific configured source. Nested paths are
