@@ -126,8 +126,8 @@ Use a specific SSH key for pull and push:
 dfman sync --repo '~/.dotfiles' --ssh-key '~/.ssh/id_ed25519_work'
 ```
 
-Discard all local commits, tracked changes, and untracked files, then reset the
-current branch to its latest state on `origin`:
+Discard all local commits, tracked changes, and untracked files, then switch to
+the default branch on `origin` and reset it to the latest remote commit:
 
 ```bash
 dfman sync --reset

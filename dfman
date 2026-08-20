@@ -738,6 +738,7 @@ sync_repo_source() {
     local ssh_key="${2:-}"
     local reset="${3:-false}"
     local commit_message
+    local default_ref
     local diff_status
     local branch
 
@@ -754,22 +755,32 @@ sync_repo_source() {
     fi
 
     if [ "$reset" = true ]; then
-        branch=$(git -C "$source_dir" symbolic-ref --quiet --short HEAD) || {
-            echo -e "\033[33mWarning: cannot reset detached HEAD in $source_dir\033[0m"
+        default_ref=$(git_remote "$source_dir" "$ssh_key" ls-remote --symref origin HEAD) || {
+            echo -e "\033[33mWarning: failed to resolve the default branch on origin in $source_dir\033[0m"
             return 1
         }
+        branch=$(printf '%s\n' "$default_ref" | awk '$1 == "ref:" && $3 == "HEAD" {
+            sub("^refs/heads/", "", $2)
+            print $2
+            exit
+        }')
+        if [ -z "$branch" ]; then
+            echo -e "\033[33mWarning: origin does not advertise a default branch in $source_dir\033[0m"
+            return 1
+        fi
 
         # Reset mode is an explicit recovery operation: origin is authoritative,
-        # so local commits, tracked edits, and untracked files must not survive.
-        # Fetch before changing the worktree so a network failure leaves local
-        # state untouched instead of resetting to a potentially stale ref.
-        if ! git_remote "$source_dir" "$ssh_key" fetch origin "$branch"; then
+        # so local branches, commits, tracked edits, and untracked files must not
+        # prevent returning to the remote's default branch. Fetch before changing
+        # the worktree so a network failure leaves local state untouched.
+        if ! git_remote "$source_dir" "$ssh_key" fetch origin \
+            "+refs/heads/$branch:refs/remotes/origin/$branch"; then
             echo -e "\033[33mWarning: failed to fetch origin/$branch in $source_dir\033[0m"
             return 1
         fi
 
-        if ! git -C "$source_dir" reset --hard "origin/$branch"; then
-            echo -e "\033[33mWarning: failed to reset $source_dir to origin/$branch\033[0m"
+        if ! git -C "$source_dir" reset --hard; then
+            echo -e "\033[33mWarning: failed to discard tracked changes in $source_dir\033[0m"
             return 1
         fi
 
@@ -778,7 +789,12 @@ sync_repo_source() {
             return 1
         fi
 
-        echo "Reset to origin/$branch"
+        if ! git -C "$source_dir" checkout -B "$branch" "origin/$branch"; then
+            echo -e "\033[33mWarning: failed to switch $source_dir to origin/$branch\033[0m"
+            return 1
+        fi
+
+        echo "Reset $branch to origin/$branch"
         return
     fi
 
