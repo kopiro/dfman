@@ -262,8 +262,10 @@ backups, and scheduled synchronization are retained.
 Shell status also schedules a **background update check at most every six
 hours**. It reads cached results immediately and never waits for the network.
 The scheduled runner can refresh the same cache without an open terminal.
-Checks have a network timeout; offline failures are quiet and do not change the
-installed executable. Run `dfman self-update --check` to request a fresh check.
+Checks have bounded network timeouts; offline failures are quiet and do not
+change the installed executable. The latest commit is resolved through GitHub's
+public API, then downloaded by its immutable SHA to avoid stale branch caches.
+API rate limits leave the previous result untouched until the next check. Run `dfman self-update --check` to request a fresh check.
 When the published script differs, the prompt proposes `dfman self-update`;
 it never applies the update automatically. Comparison uses script contents,
 not version numbers: an unpublished local edit can also differ from the

@@ -1334,8 +1334,22 @@ cmd_self_update() {
 }
 
 download_update() {
-    # Avoid stale mutable-branch responses shared with an earlier download.
-    local update_url="$DFMAN_UPDATE_URL?dfman=$(date +%s)"
+    # Resolve the published commit first: raw/main can serve stale contents even
+    # after a successful push. Both checks and installs use the immutable URL.
+    local revision update_url
+    local revision_url="https://api.github.com/repos/kopiro/dfman/commits/main?dfman=$(date +%s)"
+    if command -v curl >/dev/null 2>&1; then
+        revision=$(curl -fsSL --connect-timeout 5 --max-time 15 \
+            -H 'Accept: application/vnd.github.sha' "$revision_url") || return 1
+    else
+        revision=$(wget -q --timeout=15 --tries=1 \
+            --header='Accept: application/vnd.github.sha' -O - "$revision_url") || return 1
+    fi
+    if [[ ! "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+        echo "Cannot resolve the published dfman commit." >&2
+        return 1
+    fi
+    update_url="https://raw.githubusercontent.com/kopiro/dfman/$revision/dfman"
     if command -v curl >/dev/null 2>&1; then
         curl -fsSL --connect-timeout 5 --max-time 15 -o "$1" "$update_url"
     else
