@@ -21,6 +21,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 exec > "$state_dir/sync.log" 2>&1
 printf 'Started: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+# Bounded, cached background check; sync does not depend on update availability.
+"$DFMAN_BIN" self-update --check --cached </dev/null >/dev/null 2>&1 &
 sync_args=("$@")
 link_args=()
 while [ "$#" -gt 0 ]; do

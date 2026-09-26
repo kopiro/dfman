@@ -8,7 +8,7 @@ CONFIG_SOURCES=()
 CONFIG_TARGETS=()
 
 usage() {
-    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|sync|status|self-update> [options]"
+    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|sync|status|shell|self-update> [options]"
     echo ""
     echo "Config:"
     echo "  $CONFIG_FILE"
@@ -22,7 +22,8 @@ usage() {
     echo "  repo-sync [--reset] [--repo r] [--ssh-key k] Commit, pull, and push repos"
     echo "  sync [--reset] [--repo r] [--ssh-key k]      Alias of repo-sync"
     echo "  status [--ack]       Show scheduled sync results and recovery notices"
-    echo "  self-update          Update dfman from GitHub"
+    echo "  shell <install|uninstall|status>  Manage terminal notices (zsh)"
+    echo "  self-update [--check] Update dfman or check without installing"
     exit 1
 }
 
@@ -112,7 +113,7 @@ repo_sync_usage() {
 }
 
 current_executable_path() {
-    local script_path="${BASH_SOURCE[0]}"
+    local script_path="${1:-${BASH_SOURCE[0]}}"
 
     script_path=$(expand_home "$script_path")
 
@@ -1116,7 +1117,9 @@ ${detail}
     if [ "$mode" = --prompt ]; then
         [ -n "$problems" ] || return 0
         printf '%s' "$problems" | git hash-object --stdin || return 1
-        printf '%s\n' 'dfman: synchronization needs attention. Run dfman status for details.'
+        printf 'dfman: synchronization needs attention.\n'
+        printf '%s' "$problems" | LC_ALL=C tr -d '\000-\010\013-\037\177' | head -n 8
+        printf '%s\n' 'Run dfman status for full details.'
         return 0
     fi
     [ ! -f "$state_dir/last-run" ] || last_run=$(cat "$state_dir/last-run")
@@ -1132,7 +1135,161 @@ ${detail}
     fi
 )
 
+# Status only schedules a bounded background check when the six-hour cache is
+# due. No network request is awaited by a prompt, and updates are never applied.
+update_check_due() {
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dfman" checked now
+    checked=$(cat "$state_dir/update-attempt" 2>/dev/null) || checked=0
+    case "$checked" in ''|*[!0-9]*) checked=0 ;; esac
+    now=$(date +%s)
+    [ "$now" -lt "$checked" ] || [ "$((now - checked))" -ge 21600 ]
+}
+
+check_update() (
+    umask 077
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dfman" script_path download_dir first_line
+    mkdir -p "$state_dir" || return 1
+    mkdir "$state_dir/update-check.lock" 2>/dev/null || return 0
+    download_dir=""
+    trap '[ -z "$download_dir" ] || rm -rf "$download_dir"; rmdir "$state_dir/update-check.lock" 2>/dev/null || true' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    date +%s > "$state_dir/update-attempt" || return 1
+    download_dir=$(mktemp -d "$state_dir/update.XXXXXX") || return 1
+    script_path=$(current_executable_path) || return 1
+    if ! download_update "$download_dir/dfman"; then
+        echo "Cannot check for updates. The installed version was not changed."
+        return 1
+    fi
+    read -r first_line < "$download_dir/dfman" || true
+    if [ "$first_line" != '#!/bin/bash' ] || ! bash -n "$download_dir/dfman"; then
+        echo "The published script is invalid. The installed version was not changed."
+        return 1
+    fi
+    {
+        git hash-object "$script_path" && git hash-object "$download_dir/dfman"
+    } > "$download_dir/result" || return 1
+    mv "$download_dir/result" "$state_dir/update-result" || return 1
+    if cmp -s "$script_path" "$download_dir/dfman"; then
+        echo "dfman is up to date."
+    else
+        echo "A different published version is available. Run dfman self-update to install it."
+    fi
+)
+
+shell_status() {
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dfman" script_path notice local_hash checked_hash published_hash
+    script_path=$(current_executable_path) || return 1
+    if update_check_due && [ ! -d "$state_dir/update-check.lock" ]; then
+        "$script_path" self-update --check --cached </dev/null >/dev/null 2>&1 &
+    fi
+    notice=$(cmd_status --prompt) || return 1
+    if [ -n "$notice" ]; then
+        # cmd_status emits a fingerprint followed by the useful problem details.
+        printf '%s\n' "$notice" | sed '1d'
+    fi
+    if [ -f "$state_dir/update-result" ]; then
+        checked_hash=$(sed -n '1p' "$state_dir/update-result")
+        published_hash=$(sed -n '2p' "$state_dir/update-result")
+        local_hash=$(git hash-object "$script_path") || return 1
+        # A successful update or local edit invalidates a result for the old file.
+        if [ "$local_hash" = "$checked_hash" ] && [ "$local_hash" != "$published_hash" ]; then
+            echo "dfman: the published version differs. Run dfman self-update to install it."
+        fi
+    fi
+}
+
+shell_init() {
+    cat <<'HOOK'
+[[ -o interactive ]] || return 0
+_dfman_prompt_notice() {
+    local previous_rc=$? notice
+    [[ -t 1 ]] || return "$previous_rc"
+    (( $+commands[dfman] )) || return "$previous_rc"
+    notice=$(command dfman shell status 2>/dev/null) || return "$previous_rc"
+    if [[ "$notice" != "${_dfman_seen_notice:-}" ]]; then
+        [[ -z "$notice" ]] || print -r -- "$notice"
+        _dfman_seen_notice=$notice
+    fi
+    return "$previous_rc"
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd _dfman_prompt_notice
+HOOK
+}
+
+shell_install() (
+    local action="$1" rc_file rc_source temp_dir label
+    if [ "$action" = install ]; then label=installed; else label=uninstalled; fi
+    rc_file="${ZDOTDIR:-$HOME}/.zshrc"
+    rc_source=$(current_executable_path "$rc_file") || return 1
+    [ ! -e "$rc_source" ] || [ -f "$rc_source" ] || { echo "Not a regular shell configuration: $rc_source"; return 1; }
+    temp_dir=$(mktemp -d) || return 1
+    trap 'rm -rf "$temp_dir"' EXIT
+    # Only remove our delimited block and the exact previous manual integration.
+    # Refuse malformed markers rather than accidentally removing other settings.
+    if [ -f "$rc_source" ]; then
+        awk '
+            $0 == "# >>> dfman shell >>>" { if (inside) exit 2; inside=1; next }
+            $0 == "# <<< dfman shell <<<" { if (!inside) exit 2; inside=0; next }
+            inside { next }
+            $0 == "# Show unresolved scheduled dotfile sync problems at the next prompt." { next }
+            $0 == "[[ ! -r \"$HOME/.local/share/dfman/dfman.zsh\" ]] || source \"$HOME/.local/share/dfman/dfman.zsh\"" { next }
+            { print }
+            END { if (inside) exit 2 }
+        ' "$rc_source" > "$temp_dir/rc" || { echo "Check the existing dfman markers in $rc_source before retrying."; return 1; }
+    else
+        : > "$temp_dir/rc"
+    fi
+    if [ "$action" = install ]; then
+        cat >> "$temp_dir/rc" <<'BLOCK'
+# >>> dfman shell >>>
+if command -v dfman >/dev/null 2>&1; then
+  eval "$(dfman shell init zsh)"
+fi
+# <<< dfman shell <<<
+BLOCK
+    fi
+    zsh -n "$temp_dir/rc" || return 1
+    if [ -f "$rc_source" ] && cmp -s "$temp_dir/rc" "$rc_source"; then
+        echo "Shell integration is already $label: $rc_file"
+        return 0
+    fi
+    # Write the resolved source, preserving the shell configuration symlink,
+    # ownership and existing permissions (including dfman-managed dotfiles).
+    cat "$temp_dir/rc" > "$rc_source" || return 1
+    echo "Shell integration $label in $rc_file (source: $rc_source)."
+    if [ "$action" = install ]; then
+        echo 'Open a new terminal, or run: eval "$(dfman shell init zsh)"'
+    else
+        echo 'Existing terminals: add-zsh-hook -d precmd _dfman_prompt_notice'
+    fi
+)
+
+cmd_shell() {
+    local action="${1:-}" selected_shell="${2:-${SHELL##*/}}"
+    [ "$#" -le 2 ] || { echo "Usage: dfman shell <install|uninstall|init|status> [zsh]"; return 1; }
+    case "$action" in
+        status) [ "$#" -eq 1 ] || return 1; shell_status ;;
+        install|uninstall|init)
+            if [ "$selected_shell" != zsh ]; then
+                echo "Automatic shell integration currently supports zsh. Run dfman shell $action zsh explicitly, or use dfman shell status directly."
+                return 1
+            fi
+            if [ "$action" = init ]; then shell_init; else shell_install "$action"; fi
+            ;;
+        *) echo "Usage: dfman shell <install|uninstall|init|status> [zsh]"; return 1 ;;
+    esac
+}
+
 cmd_self_update() {
+    if [ "${1:-}" = --check ]; then
+        [ "$#" -le 2 ] && { [ "$#" -eq 1 ] || [ "$2" = --cached ]; } || return 1
+        if [ "${2:-}" = --cached ] && ! update_check_due; then return 0; fi
+        check_update
+        return $?
+    fi
+    [ "$#" -eq 0 ] || { echo "Usage: dfman self-update [--check]"; return 1; }
     if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
         echo "Error: curl or wget is required for self-update"
         exit 1
@@ -1177,10 +1334,12 @@ cmd_self_update() {
 }
 
 download_update() {
+    # Avoid stale mutable-branch responses shared with an earlier download.
+    local update_url="$DFMAN_UPDATE_URL?dfman=$(date +%s)"
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL -o "$1" "$DFMAN_UPDATE_URL"
+        curl -fsSL --connect-timeout 5 --max-time 15 -o "$1" "$update_url"
     else
-        wget -q -O "$1" "$DFMAN_UPDATE_URL"
+        wget -q --timeout=15 --tries=1 -O "$1" "$update_url"
     fi
 }
 
@@ -1213,8 +1372,13 @@ case "${1:-}" in
         shift
         cmd_status "$@"
         ;;
+    shell)
+        shift
+        cmd_shell "$@"
+        ;;
     self-update)
-        cmd_self_update
+        shift
+        cmd_self_update "$@"
         ;;
     -h|--help)
         usage

@@ -236,19 +236,38 @@ recovery paths. `dfman status --ack` dismisses informational reset backup
 notices; it never clears unresolved failures. Successful syncs clear failures
 for the repositories involved. State and backups stay on the local machine.
 
-For an interactive zsh terminal, install `dfman.zsh` at
-`~/.local/share/dfman/dfman.zsh` and add to `.zshrc`:
+Install the interactive terminal hook with:
 
-```zsh
-[[ ! -r "$HOME/.local/share/dfman/dfman.zsh" ]] || source "$HOME/.local/share/dfman/dfman.zsh"
+```sh
+dfman shell install
 ```
 
-Before each prompt, the hook reads local status only. It displays one short
-notice for each new problem in that shell session. A new terminal session
-reminds you about unresolved problems. Healthy runs are silent. No sync,
-network access, or notification sending happens at the prompt. Notices appear
-at the next prompt, not in the middle of a running command. Other shells can
-use `dfman status` directly; the supplied automatic hook supports zsh.
+Automatic integration currently supports **zsh**. Pass `zsh` explicitly if your
+`SHELL` environment identifies another shell. The installer honors `ZDOTDIR`,
+preserves `.zshrc` symlinks by editing their resolved source, and replaces only
+its marked block. Running it repeatedly adds no duplicates. It also migrates
+the previous manual `dfman.zsh` source line. Open a new terminal afterward, or
+run `eval "$(dfman shell init zsh)"` in the current one.
+
+`dfman shell status` prints actual unresolved errors and backup notices, with
+nothing printed when healthy. The installed hook calls it before each prompt
+and suppresses unchanged messages within that shell session. New sessions show
+unresolved problems again. `dfman status` remains the complete report.
+
+`dfman shell uninstall` removes only the managed startup integration. Already
+open terminals can remove the hook with
+`add-zsh-hook -d precmd _dfman_prompt_notice`, or simply reopen. Status files,
+backups, and scheduled synchronization are retained.
+
+Shell status also schedules a **background update check at most every six
+hours**. It reads cached results immediately and never waits for the network.
+The scheduled runner can refresh the same cache without an open terminal.
+Checks have a network timeout; offline failures are quiet and do not change the
+installed executable. Run `dfman self-update --check` to request a fresh check.
+When the published script differs, the prompt proposes `dfman self-update`;
+it never applies the update automatically. Comparison uses script contents,
+not version numbers: an unpublished local edit can also differ from the
+published copy. A result for a different installed file is ignored.
 
 Overrides: `DFMAN_BIN`, `XDG_STATE_HOME`. `DFMAN_REPORT_DIR` is the internal
 sync report destination used by the runner. Interrupted runner locks appear
@@ -280,7 +299,8 @@ dfman doctor --repo '~/.work-dotfiles'
 
 ### `dfman self-update`
 
-Updates the installed `dfman` executable from GitHub.
+Updates the installed `dfman` executable from GitHub. Use `--check` to compare
+with the published copy without installing it.
 
 ```bash
 dfman self-update
