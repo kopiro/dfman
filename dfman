@@ -113,6 +113,8 @@ repo_sync_usage() {
 current_executable_path() {
     local script_path="${BASH_SOURCE[0]}"
 
+    script_path=$(expand_home "$script_path")
+
     if [[ "$script_path" != */* ]]; then
         script_path=$(command -v "$script_path")
     fi
@@ -135,7 +137,7 @@ current_executable_path() {
     done
 
     local script_dir
-    script_dir=$(cd "$(dirname "$script_path")" && pwd)
+    script_dir=$(cd "$(dirname "$script_path")" && pwd) || return 1
 
     echo "$script_dir/$(basename "$script_path")"
 }
