@@ -28,6 +28,16 @@ usage() {
 expand_home() {
     local path="$1"
 
+    # Accept native Windows paths from cmd/PowerShell as well as Git Bash paths.
+    case "${OSTYPE:-}" in
+        msys*|cygwin*)
+            path="${path//\\//}"
+            if [[ "$path" == [a-zA-Z]:/* ]] || [[ "$path" == //* ]]; then
+                path=$(cygpath -u "$path")
+            fi
+            ;;
+    esac
+
     case "$path" in
         "~")
             echo "$HOME"
@@ -398,7 +408,16 @@ link_source() {
             echo "Would link: $dotfile -> $symlink_target"
         else
             echo "Linking: $dotfile -> $symlink_target"
-            ln -s "$dotfile" "$symlink_target"
+            # Git Bash otherwise silently copies files instead of linking them.
+            # Fail if native symlinks are unavailable; never leave stale copies.
+            case "${OSTYPE:-}" in
+                msys*|cygwin*)
+                    MSYS="${MSYS:+$MSYS }winsymlinks:nativestrict" \
+                    CYGWIN="${CYGWIN:+$CYGWIN }winsymlinks:nativestrict" \
+                        ln -s "$dotfile" "$symlink_target"
+                    ;;
+                *) ln -s "$dotfile" "$symlink_target" ;;
+            esac
         fi
     done
 }
@@ -517,6 +536,7 @@ cmd_create() {
         exit 1
     fi
 
+    full_path=$(expand_home "$full_path")
     if [[ "$full_path" != /* ]]; then
         echo "Error: path must be absolute"
         exit 1
@@ -946,8 +966,8 @@ cmd_repo_sync() {
 }
 
 cmd_self_update() {
-    if ! command -v wget >/dev/null 2>&1; then
-        echo "Error: wget is required for self-update"
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+        echo "Error: curl or wget is required for self-update"
         exit 1
     fi
 
@@ -960,7 +980,7 @@ cmd_self_update() {
     temp_dir=$(mktemp -d)
     temp_file="$temp_dir/dfman"
 
-    if ! wget -q -O "$temp_file" "$DFMAN_UPDATE_URL"; then
+    if ! download_update "$temp_file"; then
         rm -rf "$temp_dir"
         echo "Error: failed to download dfman from $DFMAN_UPDATE_URL"
         exit 1
@@ -987,6 +1007,14 @@ cmd_self_update() {
 
     rm -rf "$temp_dir"
     echo "Updated dfman at $script_path"
+}
+
+download_update() {
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$1" "$DFMAN_UPDATE_URL"
+    else
+        wget -q -O "$1" "$DFMAN_UPDATE_URL"
+    fi
 }
 
 case "${1:-}" in

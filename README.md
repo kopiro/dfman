@@ -5,6 +5,8 @@ them back into a target directory.
 
 ## Installation
 
+### macOS and Linux
+
 Install `dfman` with `wget`:
 
 ```bash
@@ -18,6 +20,40 @@ Make sure `$HOME/.local/bin` is in your `PATH`:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
+
+### Windows
+
+Install Git for Windows, then run in PowerShell:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/kopiro/dfman/main/install.ps1 -OutFile "$env:TEMP\dfman-install.ps1"
+& "$env:TEMP\dfman-install.ps1"
+```
+
+The installer adds `%USERPROFILE%\.local\bin` to your user PATH. Open a new
+terminal and use `dfman` from PowerShell, cmd, or Git Bash. No WSL is needed.
+Enable Windows Developer Mode or use an elevated terminal to create symlinks.
+dfman uses native Windows symlinks and fails if it cannot create them; it never
+silently substitutes copies. This follows the
+[MSYS2 native symlink behavior](https://www.msys2.org/docs/symlinks/).
+
+Configuration remains `~/.config/dfman.conf`, under your Windows user profile.
+Use `~/.dotfiles`, `C:/Users/name/dotfiles`, or Git Bash `/c/Users/name/dotfiles`
+paths. Configuration entries cannot contain whitespace or `#`; `~` works even
+when the user profile path contains spaces. Repositories must contain
+Windows-compatible filenames. When cloning repositories containing symlinks,
+use `git -c core.symlinks=true clone ...` with symlink permission enabled.
+
+For unattended runs, configure Task Scheduler to run as the repository owner
+every ten minutes, whether logged on or not, and avoid overlapping instances.
+Use `cmd.exe /d /c` with this command (substitute your profile path):
+
+```bat
+call C:\Users\name\.local\bin\dfman.cmd sync && call C:\Users\name\.local\bin\dfman.cmd link
+```
+
+The task needs non-interactive Git authentication and permission to create
+symlinks. `sync` commits and pushes local changes as well as pulling updates.
 
 ## Configuration
 
