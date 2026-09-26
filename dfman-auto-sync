@@ -1,0 +1,73 @@
+#!/bin/bash
+# Scheduler entry point. Publish local status for dfman status and shell prompts.
+set -e
+umask 077
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+export GIT_TERMINAL_PROMPT=0
+DFMAN_BIN="${DFMAN_BIN:-$HOME/.local/bin/dfman}"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dfman"
+mkdir -p "$state_dir/reports" "$state_dir/notices"
+lock_dir="$state_dir/runner.lock"
+if ! mkdir "$lock_dir" 2>/dev/null; then
+    # A live runner owns the state. A stale lock is exposed by dfman status.
+    echo "Runner already locked: $lock_dir" >&2
+    exit 75
+fi
+run_dir=""
+trap '[ -z "$run_dir" ] || rm -rf "$run_dir"; rm -f "$lock_dir/pid"; rmdir "$lock_dir"' EXIT
+printf '%s\n' "$$" > "$lock_dir/pid"
+run_dir=$(mktemp -d "$state_dir/run.XXXXXX")
+trap 'exit 130' INT
+trap 'exit 143' TERM
+exec > "$state_dir/sync.log" 2>&1
+printf 'Started: %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+sync_args=("$@")
+link_args=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --repo) link_args+=(--repo "${2:-}"); shift; [ "$#" -gt 0 ] || break ;;
+        --repo=*) link_args+=("$1") ;;
+    esac
+    shift
+done
+sync_rc=0
+DFMAN_REPORT_DIR="$run_dir" "$DFMAN_BIN" sync "${sync_args[@]}" || sync_rc=$?
+link_rc=0
+if [ "$sync_rc" -eq 0 ]; then
+    "$DFMAN_BIN" link "${link_args[@]}" || link_rc=$?
+fi
+found_error=false
+shopt -s nullglob
+for report in "$run_dir"/*.event; do
+    key=$(basename "$report" .event)
+    kind=$(sed -n '1p' "$report")
+    repo=$(sed -n '2p' "$report")
+    # Don't erase an unresolved problem just because another sync owns its lock.
+    if [ "$kind" != busy ]; then
+        cp "$report" "$state_dir/reports/$key.tmp"
+        mv "$state_dir/reports/$key.tmp" "$state_dir/reports/$key.event"
+    fi
+    case "$kind" in ok|busy) ;; *) found_error=true ;; esac
+    git_dir=$(git -C "$repo" rev-parse --absolute-git-dir) || continue
+    for notice in "$git_dir"/dfman-recovery/*/notice.pending; do
+        notice_key=$(printf '%s' "$notice" | git hash-object --stdin)
+        {
+            printf 'reset-local-changes\n%s\n' "$repo"
+            cat "$notice"
+        } > "$state_dir/notices/$notice_key.tmp"
+        mv "$state_dir/notices/$notice_key.tmp" "$state_dir/notices/$notice_key.event"
+        mv "$notice" "${notice%.pending}.recorded"
+    done
+done
+if { [ "$sync_rc" -ne 0 ] && [ "$sync_rc" -ne 75 ] && [ "$found_error" = false ]; } || [ "$link_rc" -ne 0 ]; then
+    printf 'error\nScheduled synchronization\nSynchronization needs attention (sync=%s, link=%s).\nLog: %s/sync.log\n' \
+        "$sync_rc" "$link_rc" "$state_dir" > "$state_dir/reports/runner.tmp"
+    mv "$state_dir/reports/runner.tmp" "$state_dir/reports/runner.event"
+elif [ "$sync_rc" -eq 0 ] && [ "$link_rc" -eq 0 ]; then
+    rm -f "$state_dir/reports/runner.event"
+fi
+printf '%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" > "$state_dir/last-run.tmp"
+mv "$state_dir/last-run.tmp" "$state_dir/last-run"
+printf 'Finished: sync=%s link=%s\n' "$sync_rc" "$link_rc"
+[ "$sync_rc" -eq 0 ] || exit "$sync_rc"
+exit "$link_rc"

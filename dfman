@@ -8,7 +8,7 @@ CONFIG_SOURCES=()
 CONFIG_TARGETS=()
 
 usage() {
-    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|sync|self-update> [options]"
+    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|sync|status|self-update> [options]"
     echo ""
     echo "Config:"
     echo "  $CONFIG_FILE"
@@ -21,6 +21,7 @@ usage() {
     echo "  repo-rm <source>     Remove a source from the config"
     echo "  repo-sync [--reset] [--repo r] [--ssh-key k] Commit, pull, and push repos"
     echo "  sync [--reset] [--repo r] [--ssh-key k]      Alias of repo-sync"
+    echo "  status [--ack]       Show scheduled sync results and recovery notices"
     echo "  self-update          Update dfman from GitHub"
     exit 1
 }
@@ -755,102 +756,204 @@ cmd_repo_rm() {
     fi
 }
 
-sync_repo_source() {
-    local source_dir="$1"
-    local ssh_key="${2:-}"
-    local reset="${3:-false}"
-    local commit_message
-    local default_ref
-    local diff_status
-    local branch
+# Optional reports contain only status and paths, never raw Git output or contents.
+sync_report() {
+    local kind="$1" detail="$2" key
+    printf '%s: %s\n' "$kind" "$detail"
+    if [ -n "${DFMAN_REPORT_DIR:-}" ]; then
+        key=$(printf '%s' "$source_dir" | git hash-object --stdin) || return 1
+        mkdir -p "$DFMAN_REPORT_DIR" || return 1
+        printf '%s\n%s\n%s\n' "$kind" "$source_dir" "$detail" \
+            > "$DFMAN_REPORT_DIR/$key.event.tmp" || return 1
+        mv "$DFMAN_REPORT_DIR/$key.event.tmp" "$DFMAN_REPORT_DIR/$key.event" || return 1
+    fi
+}
 
+# Portable lock; a stale or ownerless lock requires inspection, never stealing.
+acquire_sync_lock() {
+    local owner
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        owner=$(cat "$lock_dir/pid" 2>/dev/null) || return 1
+        case "$owner" in ''|*[!0-9]*) return 1 ;; esac
+        if kill -0 "$owner" 2>/dev/null; then return 75; fi
+        return 1
+    fi
+    printf '%s\n' "$$" > "$lock_dir/pid" || {
+        rmdir "$lock_dir" 2>/dev/null || true
+        return 1
+    }
+}
+
+sync_repo_source() (
+    umask 077
+    local source_dir="$1" ssh_key="${2:-}" reset="${3:-false}"
+    local git_dir lock_dir branch default_ref remote_head local_head changes
+    local merge_result merge_rc paths snapshot stamp recovery_ref target_tip
+    local local_changes=false
+    export GIT_TERMINAL_PROMPT=0 GIT_EDITOR=true GIT_MERGE_AUTOEDIT=no
+
+    source_dir=$(git -C "$source_dir" rev-parse --show-toplevel) || return 1
+    git_dir=$(git -C "$source_dir" rev-parse --absolute-git-dir) || return 1
+    lock_dir="$git_dir/dfman-sync.lock"
+    if acquire_sync_lock; then
+        :
+    else
+        merge_rc=$?
+        if [ "$merge_rc" -eq 75 ]; then
+            sync_report busy "Another synchronization owns the repository lock."
+        else
+            sync_report error "Inspect the stale or incomplete lock before removing it: $lock_dir"
+        fi
+        return "$merge_rc"
+    fi
+    trap 'rm -f "$lock_dir/pid"; rmdir "$lock_dir" 2>/dev/null || true' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     echo "Syncing repo: $source_dir"
 
-    if [ ! -d "$source_dir" ]; then
-        echo -e "\033[33mWarning: source directory does not exist: $source_dir\033[0m"
+    # Do this before add -A, including in reset mode. An interrupted manual Git
+    # operation belongs to its user, and must not become an automatic commit.
+    for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply sequencer; do
+        if [ -e "$git_dir/$marker" ]; then
+            sync_report conflict "Finish or abort the existing Git operation ($marker) before syncing."
+            return 2
+        fi
+    done
+    paths=$(git -C "$source_dir" diff --name-only --diff-filter=U) || return 1
+    if [ -n "$paths" ]; then
+        sync_report conflict "Resolve the existing conflicts before syncing:
+$paths"
+        return 2
+    fi
+    # Nested working trees need their own preservation policy; don't pretend an
+    # outer repository snapshot safely synchronizes submodule working state.
+    if [ -s "$source_dir/.gitmodules" ]; then
+        sync_report error "Repositories with submodules require manual synchronization."
         return 1
     fi
-
-    if ! git -C "$source_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        echo -e "\033[33mWarning: source is not a git repo: $source_dir\033[0m"
-        return 1
-    fi
+    local_head=$(git -C "$source_dir" rev-parse --verify HEAD) || return 1
 
     if [ "$reset" = true ]; then
         default_ref=$(git_remote "$source_dir" "$ssh_key" ls-remote --symref origin HEAD) || {
-            echo -e "\033[33mWarning: failed to resolve the default branch on origin in $source_dir\033[0m"
+            sync_report error "Cannot read the remote default branch. Local files were not reset."
             return 1
         }
         branch=$(printf '%s\n' "$default_ref" | awk '$1 == "ref:" && $3 == "HEAD" {
-            sub("^refs/heads/", "", $2)
-            print $2
-            exit
+            sub("^refs/heads/", "", $2); print $2; exit
         }')
         if [ -z "$branch" ]; then
-            echo -e "\033[33mWarning: origin does not advertise a default branch in $source_dir\033[0m"
+            sync_report error "The remote has no advertised default branch. Local files were not reset."
             return 1
         fi
-
-        # Reset mode is an explicit recovery operation: origin is authoritative,
-        # so local branches, commits, tracked edits, and untracked files must not
-        # prevent returning to the remote's default branch. Fetch before changing
-        # the worktree so a network failure leaves local state untouched.
-        if ! git_remote "$source_dir" "$ssh_key" fetch origin \
-            "+refs/heads/$branch:refs/remotes/origin/$branch"; then
-            echo -e "\033[33mWarning: failed to fetch origin/$branch in $source_dir\033[0m"
+    else
+        branch=$(git -C "$source_dir" symbolic-ref --quiet --short HEAD) || {
+            sync_report error "Select a local branch before syncing."
             return 1
-        fi
-
-        if ! git -C "$source_dir" reset --hard; then
-            echo -e "\033[33mWarning: failed to discard tracked changes in $source_dir\033[0m"
-            return 1
-        fi
-
-        if ! git -C "$source_dir" clean -fd; then
-            echo -e "\033[33mWarning: failed to remove untracked files in $source_dir\033[0m"
-            return 1
-        fi
-
-        if ! git -C "$source_dir" checkout -B "$branch" "origin/$branch"; then
-            echo -e "\033[33mWarning: failed to switch $source_dir to origin/$branch\033[0m"
-            return 1
-        fi
-
-        echo "Reset $branch to origin/$branch"
-        return
+        }
     fi
-
-    if ! git -C "$source_dir" add -A; then
-        echo -e "\033[33mWarning: failed to stage changes in $source_dir\033[0m"
+    if ! git_remote "$source_dir" "$ssh_key" fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"; then
+        sync_report error "Cannot fetch remote updates. Local files were not changed."
         return 1
     fi
+    remote_head=$(git -C "$source_dir" rev-parse "refs/remotes/origin/$branch") || return 1
 
+    if [ "$reset" = true ]; then
+        changes=$(git -C "$source_dir" status --porcelain --untracked-files=all) || return 1
+        target_tip=$(git -C "$source_dir" rev-parse --verify "refs/heads/$branch" 2>/dev/null) || target_tip=""
+        if [ -n "$changes" ] || ! git -C "$source_dir" merge-base --is-ancestor "$local_head" "$remote_head"; then
+            local_changes=true
+        fi
+        if [ -n "$target_tip" ] && ! git -C "$source_dir" merge-base --is-ancestor "$target_tip" "$remote_head"; then
+            local_changes=true
+        fi
+        if [ "$local_head" = "$remote_head" ] && [ -z "$changes" ] && \
+            [ "$(git -C "$source_dir" symbolic-ref --quiet --short HEAD)" = "$branch" ]; then
+            sync_report ok "Already matches origin/$branch."
+            return 0
+        fi
+        # Archive the actual working tree, including ignored files. reset --hard
+        # can overwrite ignored paths if a remote adds a tracked file there.
+        # Keep snapshots inside .git, outside both cleanup and dotfile linking.
+        stamp="$(date -u '+%Y%m%dT%H%M%SZ')-$$"
+        snapshot="$git_dir/dfman-recovery/$stamp"
+        recovery_ref="refs/dfman/recovery/$stamp"
+        mkdir -p "$snapshot" || return 1
+        if ! tar -cf "$snapshot/files.tar" --exclude='./.git' -C "$source_dir" . || \
+            ! tar -tf "$snapshot/files.tar" >/dev/null; then
+            sync_report error "Backup failed. Local files were not reset. Incomplete backup: $snapshot"
+            return 1
+        fi
+        if [ -f "$git_dir/index" ]; then
+            cp "$git_dir/index" "$snapshot/index" || return 1
+        fi
+        git -C "$source_dir" update-ref "$recovery_ref/head" "$local_head" || return 1
+        if [ -n "$target_tip" ]; then
+            git -C "$source_dir" update-ref "$recovery_ref/branch" "$target_tip" || return 1
+        fi
+        printf 'Repository: %s\nHEAD: %s\nTarget: %s\nRecovery ref: %s/head\n' \
+            "$source_dir" "$local_head" "$remote_head" "$recovery_ref" > "$snapshot/README" || return 1
+        # A durable event is written before deletion, so failed resets can still
+        # be traced to their backup. It is also consumed after interrupted runs.
+        if [ "$local_changes" = true ]; then
+            printf 'Local differences saved before resetting to origin/%s.\nBackup: %s\n' \
+                "$branch" "$snapshot" > "$snapshot/notice.pending" || return 1
+        fi
+        echo "Recovery snapshot: $snapshot ($recovery_ref/head)"
+        if ! git -C "$source_dir" reset --hard || \
+            ! git -C "$source_dir" clean -fd || \
+            ! git -C "$source_dir" checkout --no-overwrite-ignore -B "$branch" "origin/$branch"; then
+            sync_report error "Reset did not complete. Recover local files from: $snapshot"
+            return 1
+        fi
+        sync_report ok "Reset to origin/$branch. Recovery snapshot: $snapshot"
+        return 0
+    fi
+
+    git -C "$source_dir" add -A || return 1
     if git -C "$source_dir" diff --cached --quiet; then
         echo "No local changes to commit"
     else
-        diff_status=$?
-        if [ "$diff_status" -ne 1 ]; then
-            echo -e "\033[33mWarning: failed to inspect staged changes in $source_dir\033[0m"
-            return 1
-        fi
-
-        commit_message="sync by $(hostname) at $(date '+%Y-%m-%d %H:%M:%S')"
-        if ! git -C "$source_dir" commit -m "$commit_message"; then
-            echo -e "\033[33mWarning: failed to commit changes in $source_dir\033[0m"
+        merge_rc=$?
+        [ "$merge_rc" -eq 1 ] || return 1
+        if ! git -C "$source_dir" commit -m "sync by $(hostname) at $(date '+%Y-%m-%d %H:%M:%S')"; then
+            sync_report error "Cannot commit local changes. They remain in the repository."
             return 1
         fi
     fi
-
-    if ! git_remote "$source_dir" "$ssh_key" pull --rebase; then
-        echo -e "\033[33mWarning: pull failed in $source_dir; resolve conflicts or git state manually, then retry\033[0m"
+    local_head=$(git -C "$source_dir" rev-parse HEAD) || return 1
+    # merge-tree computes conflicts in Git's object store, never in the checkout
+    # behind active home-directory symlinks. Requires Git 2.38 or newer.
+    if ! git -C "$source_dir" merge-base --is-ancestor "$remote_head" "$local_head"; then
+        if merge_result=$(git -C "$source_dir" merge-tree --write-tree --name-only "$local_head" "$remote_head"); then
+            :
+        else
+            merge_rc=$?
+            if [ "$merge_rc" -eq 1 ]; then
+                paths=$(printf '%s\n' "$merge_result" | awk 'NR == 1 { next } /^$/ { exit } { print }')
+                sync_report conflict "Local work is saved; remote updates conflict with:
+$paths
+Local commit: $local_head
+Remote commit: $remote_head"
+                return 2
+            fi
+            sync_report error "Cannot prepare the merge. Local files were not merged; Git 2.38 or newer is required."
+            return 1
+        fi
+        if ! git -C "$source_dir" merge --no-edit --no-stat --no-autostash "$remote_head"; then
+            if [ -e "$git_dir/MERGE_HEAD" ] && ! git -C "$source_dir" merge --abort; then
+                sync_report conflict "Cannot abort the interrupted merge. Resolve it manually before syncing."
+                return 2
+            fi
+            sync_report error "Cannot apply remote updates. Local work is preserved."
+            return 1
+        fi
+    fi
+    if ! git_remote "$source_dir" "$ssh_key" push origin "HEAD:refs/heads/$branch"; then
+        sync_report error "Cannot publish local commits. They are preserved; synchronization will retry."
         return 1
     fi
-
-    if ! git_remote "$source_dir" "$ssh_key" push; then
-        echo -e "\033[33mWarning: push failed in $source_dir\033[0m"
-        return 1
-    fi
-}
+    sync_report ok "Synchronized with origin/$branch."
+)
 
 build_git_ssh_command() {
     local ssh_key="$1"
@@ -877,7 +980,8 @@ cmd_repo_sync() {
     local repo_arg=""
     local ssh_key_arg=""
     local reset=false
-    local failed=false
+    local result=0
+    local rc=0
 
     while [ "$#" -gt 0 ]; do
         case "$1" in
@@ -933,10 +1037,8 @@ cmd_repo_sync() {
     load_config
     if [ -n "$repo_arg" ]; then
         select_config_for_repo "$repo_arg"
-        if ! sync_repo_source "$SELECTED_SOURCE_DIR" "$ssh_key_arg" "$reset"; then
-            exit 1
-        fi
-        return
+        sync_repo_source "$SELECTED_SOURCE_DIR" "$ssh_key_arg" "$reset" && return 0
+        return $?
     fi
 
     # Sync all repos in parallel. Each job writes to its own log file so the
@@ -954,18 +1056,81 @@ cmd_repo_sync() {
     done
 
     for index in "${!pids[@]}"; do
-        if ! wait "${pids[$index]}"; then
-            failed=true
+        if wait "${pids[$index]}"; then
+            rc=0
+        else
+            rc=$?
+            case "$rc" in
+                2) result=2 ;;
+                75) [ "$result" -ne 0 ] || result=75 ;;
+                *) [ "$result" -eq 2 ] || result=1 ;;
+            esac
         fi
         cat "$log_dir/$index.log"
     done
 
     rm -rf "$log_dir"
 
-    if [ "$failed" = true ]; then
-        exit 1
-    fi
+    return "$result"
 }
+
+cmd_status() (
+    local mode="${1:-}" state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dfman"
+    local report kind repo detail problems="" summary="" owner last_run="not recorded"
+    case "$mode" in ''|--prompt|--ack) ;; *) echo "Usage: dfman status [--prompt|--ack]"; return 1 ;; esac
+    [ "$#" -le 1 ] || { echo "Usage: dfman status [--prompt|--ack]"; return 1; }
+    shopt -s nullglob
+    if [ "$mode" = --ack ]; then
+        # Acknowledge backup notices only. Actual failures clear after recovery.
+        for report in "$state_dir"/notices/*.event; do rm -f "$report" || return 1; done
+    fi
+    for report in "$state_dir"/reports/*.event "$state_dir"/notices/*.event; do
+        kind=$(sed -n '1p' "$report")
+        repo=$(sed -n '2p' "$report")
+        detail=$(sed -n '3,$p' "$report")
+        summary="${summary}${repo}: ${kind}
+${detail}
+
+"
+        case "$kind" in
+            ok|busy) ;;
+            *) problems="${problems}${repo}: ${kind}
+${detail}
+
+" ;;
+        esac
+    done
+    if [ -d "$state_dir/runner.lock" ]; then
+        owner=$(cat "$state_dir/runner.lock/pid" 2>/dev/null) || owner=""
+        case "$owner" in
+            ''|*[!0-9]*) owner="" ;;
+        esac
+        if [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
+            detail="Inspect the interrupted runner lock before removing it: $state_dir/runner.lock"
+            problems="${problems}${detail}
+"
+            summary="${summary}${detail}
+"
+        fi
+    fi
+    if [ "$mode" = --prompt ]; then
+        [ -n "$problems" ] || return 0
+        printf '%s' "$problems" | git hash-object --stdin || return 1
+        printf '%s\n' 'dfman: synchronization needs attention. Run dfman status for details.'
+        return 0
+    fi
+    [ ! -f "$state_dir/last-run" ] || last_run=$(cat "$state_dir/last-run")
+    printf 'Last scheduled run: %s\nLog: %s/sync.log\n\n' "$last_run" "$state_dir"
+    if [ -n "$summary" ]; then
+        # Paths from Git are data: never interpret terminal control characters.
+        printf '%s' "$summary" | LC_ALL=C tr -d '\000-\010\013-\037\177'
+    else
+        echo "No scheduled synchronization results recorded yet."
+    fi
+    if [ -n "$problems" ]; then
+        echo "Backup notices can be acknowledged with dfman status --ack. Conflicts require resolution."
+    fi
+)
 
 cmd_self_update() {
     if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
@@ -1043,6 +1208,10 @@ case "${1:-}" in
     repo-sync|sync)
         shift
         cmd_repo_sync "$@"
+        ;;
+    status)
+        shift
+        cmd_status "$@"
         ;;
     self-update)
         cmd_self_update

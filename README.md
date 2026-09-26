@@ -141,10 +141,21 @@ dfman repo-rm '~/.work-dotfiles'
 
 ### `dfman repo-sync`
 
-Synchronizes configured git repos. It stages all changes, commits them as
-`sync by {hostname} at YYYY-MM-DD HH:MM:SS`, pulls with rebase, then pushes. If
-pull hits conflicts, `dfman` warns and leaves the repo for manual resolution.
-`dfman sync` is an alias of `dfman repo-sync`.
+Synchronizes configured Git repos. It fetches the matching branch from `origin`,
+stages local changes, commits them as `sync by {hostname} at YYYY-MM-DD HH:MM:SS`,
+merges compatible remote changes, then pushes. Git 2.38 or newer is required for
+merge preparation. `dfman sync` is an alias of `dfman repo-sync`.
+
+Conflicts are detected before changing the active checkout. Local work remains
+committed, the working files remain usable, and the command exits with status 2.
+Resolve the differences manually, then run sync again. Existing unfinished Git
+operations are never staged or committed automatically. A per-repository lock
+prevents overlapping dfman syncs; stale locks require manual inspection before
+removal. Repositories with submodules are not synchronized automatically.
+
+Exit codes: 0 success, 1 operational failure, 2 conflict/manual Git resolution,
+75 another sync holds the lock. A failed push preserves local commits for retry.
+For multi-repository runs, conflicts take precedence over other failures.
 
 ```bash
 dfman repo-sync
@@ -162,8 +173,22 @@ Use a specific SSH key for pull and push:
 dfman sync --repo '~/.dotfiles' --ssh-key '~/.ssh/id_ed25519_work'
 ```
 
-Discard all local commits, tracked changes, and untracked files, then switch to
-the default branch on `origin` and reset it to the latest remote commit:
+For an explicitly designated replica, replace local state with the default
+branch on `origin`. Before any change, dfman saves the working files (including
+untracked and ignored files), the Git index, and references protecting the old
+HEAD and the branch being replaced. If backup creation fails, reset stops.
+An already clean, aligned replica needs no new snapshot.
+
+Snapshots are stored in the repository's Git directory under
+`dfman-recovery/<timestamp>-<pid>/`. They contain private data and have restricted
+permissions. They are not uploaded, automatically expired, or deleted by reset.
+Incoming remote updates also get a snapshot; only discarded local differences
+produce a reset notification. Ignored files are not cleaned; a checkout that
+would overwrite one stops instead. Avoid concurrent non-dfman writers during
+sync/reset: repository locks only serialize dfman processes.
+
+Reset refuses unfinished merges/rebases, just like ordinary sync. It remains a
+replacement operation, not a merge:
 
 ```bash
 dfman sync --reset
@@ -174,6 +199,60 @@ Reset only one configured source:
 ```bash
 dfman sync --reset --repo '~/.dotfiles'
 ```
+
+### Recovering a reset
+
+The command prints the snapshot directory and recovery reference. To inspect
+saved commits, use `git log refs/dfman/recovery/<id>/head`. Create a new branch
+from that reference when ready to recover committed work. A `/branch` reference
+also preserves the former tip of the branch replaced by reset, if it existed.
+
+Extract `<snapshot>/files.tar` into a separate empty directory to inspect
+uncommitted and untracked files, then copy only the files you want back. Do not
+extract it blindly over active dotfiles. `index` preserves the previous staging
+state; `README` records repository and commit identities. After recovery, remove
+unneeded snapshots and their `refs/dfman/recovery/<id>/*` refs explicitly.
+
+### Scheduled synchronization and terminal notices
+
+Install the optional `dfman-auto-sync` Bash runner beside dfman at
+`~/.local/bin/dfman-auto-sync` with executable permissions. It runs sync and
+links only after success, and saves local status. It sends no external
+notifications and needs no notification service or credentials.
+
+For an editing machine:
+
+```cron
+*/10 * * * * ~/.local/bin/dfman-auto-sync
+```
+
+For an explicitly designated replica, append `--reset`. Existing working
+intervals may be kept. `--repo` and `--ssh-key` are forwarded to sync; linking
+respects `--repo`. Windows Task Scheduler can invoke the runner with Git Bash.
+
+The runner writes its latest log to `~/.local/state/dfman/sync.log`. Run
+`dfman status` to see the last scheduled result, unresolved problems, and
+recovery paths. `dfman status --ack` dismisses informational reset backup
+notices; it never clears unresolved failures. Successful syncs clear failures
+for the repositories involved. State and backups stay on the local machine.
+
+For an interactive zsh terminal, install `dfman.zsh` at
+`~/.local/share/dfman/dfman.zsh` and add to `.zshrc`:
+
+```zsh
+[[ ! -r "$HOME/.local/share/dfman/dfman.zsh" ]] || source "$HOME/.local/share/dfman/dfman.zsh"
+```
+
+Before each prompt, the hook reads local status only. It displays one short
+notice for each new problem in that shell session. A new terminal session
+reminds you about unresolved problems. Healthy runs are silent. No sync,
+network access, or notification sending happens at the prompt. Notices appear
+at the next prompt, not in the middle of a running command. Other shells can
+use `dfman status` directly; the supplied automatic hook supports zsh.
+
+Overrides: `DFMAN_BIN`, `XDG_STATE_HOME`. `DFMAN_REPORT_DIR` is the internal
+sync report destination used by the runner. Interrupted runner locks appear
+in status and require inspection/removal rather than automatic lock stealing.
 
 ### `dfman create`
 
