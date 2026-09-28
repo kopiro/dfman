@@ -450,3 +450,22 @@ func TestAgentInvalidConfigRecordsError(t *testing.T) {
 		}
 	}
 }
+
+func TestInvalidTargetRejectedBeforeSync(t *testing.T) {
+	f := setup(t)
+	put(t, filepath.Join(f.local, "dotfiles", ".test"), "pending")
+	put(t, f.target, "not a directory")
+	head := g(t, f.local, "rev-parse", "HEAD")
+	c := DefaultConfig()
+	c.Folders = f.folders()
+	p := filepath.Join(f.dir, "config")
+	if e := SaveConfig(p, c); e != nil {
+		t.Fatal(e)
+	}
+	if Execute([]string{"--config", p, "--state-dir", filepath.Join(f.dir, "state"), "sync"}, "test", strings.NewReader(""), io.Discard, io.Discard) != 1 {
+		t.Fatal("invalid target accepted")
+	}
+	if g(t, f.local, "rev-parse", "HEAD") != head {
+		t.Fatal("committed with invalid configuration")
+	}
+}

@@ -101,6 +101,20 @@ func (c Config) Selected(repo string) ([]Folder, error) {
 	for _, f := range c.Folders {
 		f.Source, _ = expand(f.Source)
 		f.Target, _ = expand(f.Target)
+		info, e := os.Stat(f.Source)
+		if e != nil {
+			return nil, fmt.Errorf("source %s: %w", f.Source, e)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("source is not a directory: %s", f.Source)
+		}
+		if info, e = os.Stat(f.Target); e == nil {
+			if !info.IsDir() {
+				return nil, fmt.Errorf("target is not a directory: %s", f.Target)
+			}
+		} else if !os.IsNotExist(e) {
+			return nil, fmt.Errorf("target %s: %w", f.Target, e)
+		}
 		if wanted == "" || samePath(wanted, f.Source) {
 			out = append(out, f)
 		}
