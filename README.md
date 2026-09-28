@@ -146,9 +146,11 @@ enabled. It notifies once per newer version with installation instructions.
 Update-check failures appear in status without changing the sync result.
 Updates are never installed automatically.
 
-Use `dfman self update --check` to check manually. `dfman self update` reports
-the available version and directs you to its installer. Install updates using
-the native package for your platform.
+Use `dfman self update --check` to check manually. `dfman self update` downloads
+the native installer, verifies its SHA-256 checksum, and launches it. Complete
+the installer window on macOS and Windows. Ubuntu uses PolicyKit authorization
+to install the DEB with apt. Installer downloads are retained in the user cache.
+Release checks use the public GitHub release page and require no API token.
 
 ## Build and test
 
