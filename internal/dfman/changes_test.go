@@ -100,7 +100,7 @@ func TestFileChangeNamesRemainIntact(t *testing.T) {
 	before := g(t, f.local, "rev-parse", "HEAD")
 	name := " spaces and tabs\t "
 	if filepath.Separator == '\\' {
-		name = " spaces "
+		name = " spaces inside" // Windows normalizes trailing spaces in filenames.
 	}
 	put(t, filepath.Join(f.local, name), "contents")
 	g(t, f.local, "add", ".")
