@@ -25,9 +25,11 @@ cmp "$HOME/.config/dfman.conf" "$HOME/.config/dfman.conf.expected"
 # the installed login hook and leave desktop delivery to real-host validation.
 if [[ $(uname) == Linux ]]; then
  test -f /etc/xdg/autostart/dfman.desktop
+ test -s /usr/share/icons/hicolor/256x256/apps/dfman.png
  sudo dpkg -r dfman
  cmp "$HOME/.config/dfman.conf" "$HOME/.config/dfman.conf.expected"
  test ! -e /usr/lib/dfman/dfman
 else
  plutil -lint /Library/LaunchAgents/com.kopiro.dfman.setup.plist
+ test -s /usr/local/libexec/dfman/dfman-notify.app/Contents/Resources/dfman.icns
 fi

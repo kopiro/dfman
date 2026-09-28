@@ -9,6 +9,8 @@ trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/DEBIAN" "$tmp/usr/lib/dfman" "$tmp/usr/bin" "$tmp/etc/xdg/autostart"
 cp "dist/linux-$arch/dfman" "$tmp/usr/lib/dfman/dfman"
 ln -s ../lib/dfman/dfman "$tmp/usr/bin/dfman"
+mkdir -p "$tmp/usr/share/icons/hicolor/256x256/apps"
+cp assets/dfman-256.png "$tmp/usr/share/icons/hicolor/256x256/apps/dfman.png"
 cp packaging/linux/dfman.desktop "$tmp/etc/xdg/autostart/dfman.desktop"
 cp packaging/linux/postinst packaging/linux/prerm "$tmp/DEBIAN/"
 chmod 755 "$tmp/DEBIAN/postinst" "$tmp/DEBIAN/prerm"

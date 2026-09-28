@@ -2,6 +2,16 @@ import AppKit
 import UserNotifications
 
 let args = Array(CommandLine.arguments.dropFirst())
+// Finder custom icons belong to the installed file, not the Mach-O payload.
+if args.first == "set-icon", args.count == 2 {
+    guard let path = Bundle.main.path(forResource: "dfman", ofType: "icns"),
+          let icon = NSImage(contentsOfFile: path),
+          NSWorkspace.shared.setIcon(icon, forFile: args[1], options: []) else {
+        fputs("Could not set dfman executable icon.\n", stderr)
+        exit(1)
+    }
+    exit(0)
+}
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let center = UNUserNotificationCenter.current()

@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+/usr/local/libexec/dfman/dfman-notify.app/Contents/MacOS/dfman-notify set-icon /usr/local/libexec/dfman/dfman || echo "dfman: Finder icon could not be applied." >&2
 # Package payload is global; user configuration and registration belong to the
 # signed-in desktop user. Future desktop logins run the setup LaunchAgent.
 user=$(stat -f '%Su' /dev/console)

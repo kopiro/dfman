@@ -22,6 +22,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
+SetupIconFile={#ProjectRoot}\assets\dfman.ico
+UninstallDisplayIcon={app}\dfman.exe
 CloseApplications=yes
 RestartApplications=no
 #if Arch == "arm64"
@@ -35,6 +37,8 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "{#ProjectRoot}\dist\windows-{#Arch}\dfman.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectRoot}\dist\windows-{#Arch}\dfman-notify.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+Source: "{#ProjectRoot}\dist\windows-{#Arch}\dfman.png"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
 Filename: "{app}\dfman.exe"; Parameters: "_package remove"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveAgent"

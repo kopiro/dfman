@@ -20,7 +20,7 @@ func desktopNotify(ctx context.Context, title, body, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	var id uint32
-	return conn.Object("org.freedesktop.Notifications", "/org/freedesktop/Notifications").CallWithContext(ctx, "org.freedesktop.Notifications.Notify", 0, "dfman", uint32(0), "", title, body, []string{}, map[string]dbus.Variant{}, int32(-1)).Store(&id)
+	return conn.Object("org.freedesktop.Notifications", "/org/freedesktop/Notifications").CallWithContext(ctx, "org.freedesktop.Notifications.Notify", 0, "dfman", uint32(0), "dfman", title, body, []string{}, map[string]dbus.Variant{}, int32(-1)).Store(&id)
 }
 func unitQuote(s string) string {
 	s = strings.ReplaceAll(s, "%", "%%")

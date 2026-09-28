@@ -1,5 +1,7 @@
 # dfman
 
+<img src="assets/dfman.png" alt="dfman superhero flying with a three-row dotfiles emblem" width="240">
+
 A native dotfiles manager for macOS, Linux, and Windows. Keep files in Git,
 link them into place, and optionally synchronize them from your desktop session.
 

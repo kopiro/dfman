@@ -1,6 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=dfman
+Icon=dfman
 Exec=/usr/lib/dfman/dfman _package login
 Terminal=false
 NoDisplay=true

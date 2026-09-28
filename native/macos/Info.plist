@@ -5,6 +5,7 @@
 <key>CFBundleName</key><string>dfman</string>
 <key>CFBundleDisplayName</key><string>dfman</string>
 <key>CFBundleExecutable</key><string>dfman-notify</string>
+<key>CFBundleIconFile</key><string>dfman</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>CFBundleShortVersionString</key><string>1.0.0</string>

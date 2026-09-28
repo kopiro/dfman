@@ -20,11 +20,14 @@ std::wstring shortcut() {
 void registerApp(const wchar_t* exe) {
  com_ptr<IShellLinkW> link; check_hresult(CoCreateInstance(CLSID_ShellLink,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(link.put())));
  check_hresult(link->SetPath(exe)); check_hresult(link->SetArguments(L"status")); check_hresult(link->SetDescription(L"dfman"));
+ check_hresult(link->SetIconLocation(exe,0));
  auto store=link.as<IPropertyStore>(); PROPVARIANT value; check_hresult(InitPropVariantFromString(appID,&value));
  auto result=store->SetValue(PKEY_AppUserModel_ID,value); PropVariantClear(&value); check_hresult(result); check_hresult(store->Commit());
  auto file=link.as<IPersistFile>(); check_hresult(file->Save(shortcut().c_str(),TRUE));
  HKEY key;check_win32(RegCreateKeyExW(HKEY_CURRENT_USER,L"Software\\Classes\\AppUserModelId\\com.kopiro.dfman",0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr));
- const wchar_t display[]=L"dfman";auto error=RegSetValueExW(key,L"DisplayName",0,REG_SZ,reinterpret_cast<const BYTE*>(display),sizeof(display));RegCloseKey(key);check_win32(error);
+ const wchar_t display[]=L"dfman";auto error=RegSetValueExW(key,L"DisplayName",0,REG_SZ,reinterpret_cast<const BYTE*>(display),sizeof(display));check_win32(error);
+ std::wstring icon=exe;icon=icon.substr(0,icon.find_last_of(L"\\/"))+L"\\dfman.png";
+ error=RegSetValueExW(key,L"IconUri",0,REG_SZ,reinterpret_cast<const BYTE*>(icon.c_str()),static_cast<DWORD>((icon.size()+1)*sizeof(wchar_t)));RegCloseKey(key);check_win32(error);
  SHChangeNotify(SHCNE_CREATE,SHCNF_PATHW|SHCNF_FLUSH,shortcut().c_str(),nullptr);
 }
 std::wstring quote(const std::wstring& value) {
