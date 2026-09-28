@@ -26,8 +26,7 @@ are unsigned as well. Operating systems may display an unverified-publisher
 warning. No signing keys or notarization credentials are used in CI.
 
 The repository's `install.sh` and `install.ps1` download the native installer,
-verify its checksum, and run it. ZIP archives remain available for portable
-manual use; extracting a ZIP does not configure an agent.
+verify its checksum, and run it. Releases contain native installers only.
 
 The Windows desktop agent needs Developer Mode for native symlinks from its
 non-elevated session. Manual linking can also use symlink privilege. Links are native symlinks;
@@ -152,8 +151,8 @@ Update-check failures appear in status without changing the sync result.
 Updates are never installed automatically.
 
 Use `dfman self update --check` to check manually. For package installations,
-download and run the newer installer. `dfman self update` replaces binaries only
-for portable ZIP installations; it never overwrites package-managed files.
+download and run the newer installer. Older portable installations must also
+migrate using an installer; ZIP updates are no longer published.
 
 ## Migrating from Bash
 
@@ -173,7 +172,7 @@ go vet ./...
 bash scripts/build-macos.sh dist/darwin-arm64 arm64
 # Linux: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/linux-amd64/dfman ./cmd/dfman
 # Windows developer shell: ./scripts/build-windows.ps1 -Arch amd64
-python3 scripts/package.py v1.0.0 darwin-arm64
+bash scripts/package-macos.sh v1.0.0 arm64
 ```
 
 CI tests macOS/Linux/Windows and builds amd64/arm64 packages for each. The workflow

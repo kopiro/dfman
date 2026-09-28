@@ -56,8 +56,6 @@ jobs:
         run: bash scripts/build-macos.sh dist/darwin-${{ matrix.arch }} ${{ matrix.arch }}
       - if: matrix.platform == 'linux'
         run: GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$DFMAN_VERSION" -o dist/linux-${{ matrix.arch }}/dfman ./cmd/dfman
-      - shell: bash
-        run: python3 scripts/package.py "$DFMAN_VERSION" ${{ matrix.platform }}-${{ matrix.arch }}
       - if: matrix.platform == 'darwin'
         run: bash scripts/package-macos.sh "$DFMAN_VERSION" ${{ matrix.arch }}
       - if: matrix.platform == 'linux'
@@ -74,7 +72,6 @@ jobs:
         with:
           name: dfman-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            dist/*.zip
             dist/*.pkg
             dist/*.deb
             dist/*_setup.exe
@@ -87,7 +84,7 @@ jobs:
           pattern: dfman-*
           merge-multiple: true
           path: packages
-      - run: cd packages && sha256sum *.zip *.pkg *.deb *.exe > checksums.txt
+      - run: cd packages && sha256sum *.pkg *.deb *.exe > checksums.txt
       - uses: actions/upload-artifact@v4
         with:
           name: release-packages

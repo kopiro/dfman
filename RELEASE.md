@@ -4,7 +4,7 @@ Push a release tag only when all checks below pass. Building artifacts alone doe
 satisfy the desktop validation gate.
 
 - Automated tests and native package builds for macOS, Linux, Windows.
-- amd64 and arm64 ZIPs plus macOS PKG, Ubuntu DEB, and Windows EXE installers.
+- amd64 and arm64 macOS PKG, Ubuntu DEB, and Windows EXE installers.
 - Fresh install, reinstall, and uninstall preserve user configuration and data.
 - SHA-256 manifest covering every package.
 - OttoMini: isolated Git/link tests, LaunchAgent install/reinstall/uninstall,

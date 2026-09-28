@@ -50,4 +50,4 @@ its folder order, sync mode, and interval. macOS and Ubuntu retain a rollback co
 of a recognized portable Go executable if it would shadow the packaged command.
 An unrecognized executable at that path is left untouched and reported in status.
 Check `dfman agent status` after installation. `dfman agent install` has been removed.
-Future updates use the platform installer; portable ZIP updates remain supported.
+Future updates use the platform installer; ZIP archives are no longer published.
