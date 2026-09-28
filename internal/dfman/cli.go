@@ -33,8 +33,10 @@ func Execute(args []string, version string, in io.Reader, out, errOut io.Writer)
 		if e != nil {
 			return e
 		}
-		if _, e = c.Selected(""); e != nil {
-			return e
+		if len(c.Folders) > 0 {
+			if _, e = c.Selected(""); e != nil {
+				return e
+			}
 		}
 		fmt.Fprintln(out, "Configuration is valid.")
 		return nil

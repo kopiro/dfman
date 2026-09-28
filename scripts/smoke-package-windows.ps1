@@ -23,3 +23,5 @@ $p=Start-Process $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/
 if($p.ExitCode -ne 0){throw 'Uninstall failed'}
 if(Get-ScheduledTask -TaskName dfman-agent -ErrorAction SilentlyContinue){throw 'Task remains'}
 if([IO.File]::ReadAllText($config) -ne $content){throw 'Uninstall removed config'}
+# The removed-command assertion intentionally leaves LASTEXITCODE nonzero.
+exit 0

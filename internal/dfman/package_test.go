@@ -18,6 +18,10 @@ func TestEmptyAgentConfigIsIdle(t *testing.T) {
 	d := t.TempDir()
 	config := filepath.Join(d, "config")
 	put(t, config, "notification=false\n")
+	if code := Execute([]string{"--config", config, "config", "validate"}, "dev", nil, io.Discard, io.Discard); code != 0 {
+		t.Fatal("empty config is invalid", code)
+	}
+
 	if code := Execute([]string{"--config", config, "--state-dir", filepath.Join(d, "state"), "agent", "run"}, "dev", nil, io.Discard, io.Discard); code != 0 {
 		t.Fatal(code)
 	}
