@@ -264,6 +264,13 @@ func Execute(args []string, version string, in io.Reader, out, errOut io.Writer)
 	update := &cobra.Command{Use: "update", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return SelfUpdate(cmd.Context(), version, check, out) }}
 	update.Flags().BoolVar(&check, "check", false, "Check without installing")
 	self.AddCommand(update)
+	self.AddCommand(&cobra.Command{Use: "notify", Short: "Send a native test notification", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := desktopNotify(cmd.Context(), "dfman notification test", "Desktop notifications are working.", "dfman-self-notify"); err != nil {
+			return fmt.Errorf("test notification: %w", err)
+		}
+		fmt.Fprintln(out, "Test notification sent.")
+		return nil
+	}})
 	root.AddCommand(self)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

@@ -78,6 +78,7 @@ dfman status [--ack]
 dfman config validate
 dfman version
 dfman self update [--check]
+dfman self notify
 ```
 
 Global `--config <file>` and `--state-dir <directory>` support isolated setups.
@@ -185,3 +186,10 @@ CI builds amd64 and arm64 payloads and installers for all three platforms.
 Pushing a `vX.Y.Z` tag automatically publishes all packages and checksums after
 tests, builds, and installer checks pass. Manual workflow runs only build
 artifacts. See [RELEASE.md](RELEASE.md) for the desktop validation gate.
+
+### Test notifications
+
+Run `dfman self notify` in your signed-in desktop session to send a native test
+notification. This explicit test works even when `notification = false` and
+requires no configuration or repositories. It does not sync, link, or change
+agent settings. Notification failures return a nonzero exit status.
