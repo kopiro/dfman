@@ -8,8 +8,8 @@ $base="https://github.com/kopiro/dfman/releases/download/$Version"
 $temp=Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
 New-Item -ItemType Directory -Path $temp | Out-Null
 try {
- Invoke-WebRequest "$base/$name" -OutFile (Join-Path $temp $name)
- $sums=(Invoke-WebRequest "$base/checksums.txt").Content
+ Invoke-WebRequest -UseBasicParsing "$base/$name" -OutFile (Join-Path $temp $name)
+ $sums=(Invoke-WebRequest -UseBasicParsing "$base/checksums.txt").Content
  $expected=($sums -split "`n" | Where-Object {($_ -split '\s+')[1] -eq $name}) -split '\s+' | Select-Object -First 1
  $actual=(Get-FileHash (Join-Path $temp $name) -Algorithm SHA256).Hash
  if(!$expected -or $actual -ne $expected){throw 'Checksum verification failed'}
