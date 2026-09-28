@@ -14,8 +14,8 @@ foreach($attempt in 1..2) {
  if($task.Triggers.Repetition.Interval -ne 'PT1M'){throw 'Wrong task interval'}
 }
 $exe=Join-Path $HOME '.local\bin\dfman.exe'
-& $exe agent run
-if($LASTEXITCODE -ne 0){throw 'Empty agent run failed'}
+& $exe _package run
+if($LASTEXITCODE -ne 0){throw 'Empty _package run failed'}
 & $exe agent install
 if($LASTEXITCODE -eq 0){throw 'Removed command still works'}
 $uninstaller=Join-Path $env:LOCALAPPDATA 'dfman\uninstall\unins000.exe'

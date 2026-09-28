@@ -69,7 +69,7 @@ func installAgent(ctx context.Context, exe, config, state string, c Config, out 
 		return fmt.Errorf("install from a signed-in desktop session: %w", e)
 	}
 	xml := `<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>` + agentLabel + `</string><key>ProgramArguments</key><array>`
-	for _, arg := range []string{exe, "--config", config, "--state-dir", state, "agent", "run"} {
+	for _, arg := range []string{exe, "--config", config, "--state-dir", state, "_package", "run"} {
 		xml += "<string>" + html.EscapeString(arg) + "</string>"
 	}
 	xml += fmt.Sprintf(`</array><key>StartInterval</key><integer>%d</integer><key>RunAtLoad</key><false/><key>LimitLoadToSessionType</key><string>Aqua</string><key>EnvironmentVariables</key><dict><key>PATH</key><string>%s</string></dict></dict></plist>`, int(d/time.Second), html.EscapeString(filepath.Join(h, ".local", "bin")+":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"))

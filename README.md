@@ -41,6 +41,7 @@ Create `~/.config/dfman.conf` as TOML:
 notification = true
 
 [agent]
+enabled = true
 interval = "10m"
 sync_mode = "normal"
 
@@ -79,7 +80,6 @@ dfman status [--ack]
 dfman config validate
 dfman version
 dfman self update [--check]
-dfman agent uninstall|run|status
 ```
 
 Global `--config <file>` and `--state-dir <directory>` support isolated setups.
@@ -134,11 +134,12 @@ Linux talks to the desktop notification service over D-Bus; Windows registers a
 dfman Start Menu identity and uses native toasts. No notification utility is required.
 
 Agent logs and status are in `~/.local/state/dfman` (or `$XDG_STATE_HOME/dfman`).
-`agent status` shows both scheduler and run status. `agent uninstall` removes only
-its registration and Windows notification shortcut; it leaves configuration, links,
-repositories, and recovery data intact. It also prevents login hooks from enabling
-the agent again. Rerun the installer to re-enable it. Agents run only in signed-in
-desktop sessions.
+`dfman status` shows configuration, scheduler details, and run results.
+Set `enabled = false` under `[agent]` to disable automatic syncing, linking,
+and notifications. This takes effect on the next scheduled run; an already
+running sync finishes normally. Set it back to `true` to resume. The scheduler
+remains registered while disabled, so no reinstall is required.
+Agents run only in signed-in desktop sessions.
 
 To remove the entire package: use Windows Installed Apps, `sudo apt remove dfman`,
 or `sudo /usr/local/libexec/dfman/uninstall` on macOS. User data is preserved.

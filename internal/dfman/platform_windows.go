@@ -40,7 +40,7 @@ func installAgent(ctx context.Context, exe, config, state string, c Config, out 
 		}
 	}
 	d, _ := c.Interval()
-	args := "run " + winQuote(exe) + " --config " + winQuote(config) + " --state-dir " + winQuote(state) + " agent run"
+	args := "run " + winQuote(exe) + " --config " + winQuote(config) + " --state-dir " + winQuote(state) + " _package run"
 	script := fmt.Sprintf(`$ErrorActionPreference='Stop'
 $a=New-ScheduledTaskAction -Execute %s -Argument %s
 $t=New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(%d) -RepetitionInterval (New-TimeSpan -Minutes %d)

@@ -2,19 +2,17 @@ package dfman
 
 import (
 	"context"
-	"debug/buildinfo"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	"github.com/gofrs/flock"
 )
 
 // Called by package hooks in the desktop user's session, never as root.
-func setupPackageAgent(ctx context.Context, config, state string, out io.Writer, enable bool) error {
+func setupPackageAgent(ctx context.Context, config, state string, out io.Writer) error {
 	if runtime.GOOS != "windows" && os.Geteuid() == 0 {
 		return fmt.Errorf("package setup must run as the desktop user, not root")
 	}
@@ -30,21 +28,13 @@ func setupPackageAgent(ctx context.Context, config, state string, out io.Writer,
 		return exitCode{75}
 	}
 	defer lock.Close()
-	disabled := filepath.Join(state, "agent-disabled")
-	if !enable {
-		if _, err := os.Stat(disabled); err == nil {
-			return nil
-		} else if !os.IsNotExist(err) {
-			return err
-		}
-	}
 	// O_EXCL also refuses dangling symlinks. Never overwrite an existing config.
 	if err := os.MkdirAll(filepath.Dir(config), 0700); err != nil {
 		return err
 	}
 	f, err := os.OpenFile(config, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err == nil {
-		_, err = io.WriteString(f, "notification = true\n\n[agent]\ninterval = \"10m\"\nsync_mode = \"normal\"\n\n# Add folders with dfman repo add <source> [target].\n")
+		_, err = io.WriteString(f, "notification = true\n\n[agent]\nenabled = true\ninterval = \"10m\"\nsync_mode = \"normal\"\n\n# Add folders with dfman repo add <source> [target].\n")
 		closeErr := f.Close()
 		if err != nil {
 			return err
@@ -82,9 +72,6 @@ func setupPackageAgent(ctx context.Context, config, state string, out io.Writer,
 	if err := installAgent(ctx, exe, config, state, c, out); err != nil {
 		return err
 	}
-	if err := os.Remove(disabled); err != nil && !os.IsNotExist(err) {
-		return err
-	}
 	return writeAtomic(filepath.Join(state, "agent-notification"), []byte(fmt.Sprint(c.Notification)), 0600)
 }
 
@@ -102,7 +89,7 @@ func packageKind() string {
 }
 
 // Avoid an older portable Go binary shadowing the system package on PATH.
-// Only binaries from this Go module are moved, and a rollback copy is retained.
+// The installer owns the dfman command path; preserve the old entry for rollback.
 func migratePortableBinary(exe, state string) error {
 	if runtime.GOOS == "windows" || packageKind() == "" {
 		return nil
@@ -111,23 +98,31 @@ func migratePortableBinary(exe, state string) error {
 	if err != nil {
 		return err
 	}
-	old := filepath.Join(home, ".local", "bin", "dfman")
-	resolved, err := filepath.EvalSymlinks(old)
+	return migrateCommandPath(exe, filepath.Join(home, ".local", "bin", "dfman"), state)
+}
+
+func migrateCommandPath(exe, old, state string) error {
+	info, err := os.Lstat(old)
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if resolved == exe {
-		return nil
+	if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("%s is not a file or symlink; move it aside before reinstalling", old)
 	}
-	info, err := buildinfo.ReadFile(resolved)
-	if err != nil || info.Main.Path != "github.com/kopiro/dfman" {
-		return fmt.Errorf("%s shadows the packaged executable; move it aside and sign in again", old)
+	if oldInfo, err := os.Stat(old); err == nil {
+		if exeInfo, err := os.Stat(exe); err == nil && os.SameFile(oldInfo, exeInfo) {
+			return nil
+		}
 	}
-	backupDir := filepath.Join(state, "package-backup", time.Now().Format("20060102T150405.000000000"))
-	if err := os.MkdirAll(backupDir, 0700); err != nil {
+	root := filepath.Join(state, "package-backup")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		return err
+	}
+	backupDir, err := os.MkdirTemp(root, "command-")
+	if err != nil {
 		return err
 	}
 	backup := filepath.Join(backupDir, "dfman")
@@ -142,9 +137,6 @@ func migratePortableBinary(exe, state string) error {
 }
 
 func removePackageAgent(ctx context.Context, state string, out io.Writer) error {
-	if err := writeAtomic(filepath.Join(state, "agent-disabled"), []byte("disabled"), 0600); err != nil {
-		return err
-	}
 	if err := uninstallAgent(ctx, out); err != nil {
 		return err
 	}

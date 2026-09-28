@@ -1,6 +1,7 @@
 notification = true
 
 [agent]
+enabled = true
 interval = "10m"
 sync_mode = "normal"
 

@@ -35,7 +35,7 @@ func installAgent(ctx context.Context, exe, config, state string, c Config, out 
 	h, _ := os.UserHomeDir()
 	dir := filepath.Join(h, ".config", "systemd", "user")
 	d, _ := c.Interval()
-	args := []string{exe, "--config", config, "--state-dir", state, "agent", "run"}
+	args := []string{exe, "--config", config, "--state-dir", state, "_package", "run"}
 	for i := range args {
 		args[i] = unitQuote(args[i])
 	}

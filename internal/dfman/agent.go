@@ -14,6 +14,10 @@ import (
 type notifier func(context.Context, string, string, string) error
 
 func runAgent(ctx context.Context, c Config, state string, out io.Writer, notify notifier, version string) error {
+	if !c.Agent.Enabled {
+		fmt.Fprintln(out, "Automatic sync is disabled.")
+		return nil
+	}
 	if e := os.MkdirAll(state, 0700); e != nil {
 		return e
 	}

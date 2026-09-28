@@ -19,7 +19,7 @@ else
 fi
 [[ $("$exe" version) == "$version" ]]
 if "$exe" agent install; then echo "Removed command still works"; exit 1; fi
-"$exe" agent run
+"$exe" _package run
 cmp "$HOME/.config/dfman.conf" "$HOME/.config/dfman.conf.expected"
 # Linux user managers on hosted runners may lack a graphical session; validate
 # the installed login hook and leave desktop delivery to real-host validation.

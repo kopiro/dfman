@@ -21,7 +21,7 @@
 7. Run the native installer; it configures the agent automatically. Accept macOS
    notification permission. The Windows task uses an interactive logon, replacing
    the old S4U behavior. Linux needs a running desktop notification service and
-   systemd graphical session. Check `dfman agent status` after a scheduled run.
+   systemd graphical session. Check `dfman status` after a scheduled run.
 8. Replace calls to `repo-add`,
    `repo-remove`, `repo-sync`, and `self-update` with `repo add`, `repo remove`,
    `repo sync`, and `self update`. Replace old auto-sync invocations with the
@@ -29,7 +29,8 @@
 
 ## Roll back
 
-Run the native `dfman agent uninstall` and wait for the current run to stop.
+Set `enabled = false` under `[agent]` and wait for the current run to finish.
+Remove the native package using its uninstaller before restoring the old scheduler.
 Restore the backed-up executable, complete old configuration and launcher/runner
 files. Restore only the saved dfman scheduler entry, retaining unrelated changes
 to the scheduler. Restore old status separately if needed. Keep native recovery
@@ -47,7 +48,8 @@ Without an agent, use `dfman status` and `dfman self update --check`.
 
 Run the platform installer. Keep your TOML configuration; the installer preserves
 its folder order, sync mode, and interval. macOS and Ubuntu retain a rollback copy
-of a recognized portable Go executable if it would shadow the packaged command.
-An unrecognized executable at that path is left untouched and reported in status.
-Check `dfman agent status` after installation. `dfman agent install` has been removed.
+of an existing file or symlink at `~/.local/bin/dfman` before replacing it with
+a link to the packaged command. Directories are left untouched and reported.
+Check `dfman status` after installation. The public `dfman agent` command group has been removed. Use `dfman status`
+and the `[agent].enabled` configuration option.
 Future updates use the platform installer; ZIP archives are no longer published.

@@ -441,7 +441,7 @@ func TestAgentInvalidConfigRecordsError(t *testing.T) {
 		p := filepath.Join(d, "config")
 		put(t, p, contents)
 		state := filepath.Join(d, "state")
-		if Execute([]string{"--config", p, "--state-dir", state, "agent", "run"}, "test", strings.NewReader(""), io.Discard, io.Discard) != 1 {
+		if Execute([]string{"--config", p, "--state-dir", state, "_package", "run"}, "test", strings.NewReader(""), io.Discard, io.Discard) != 1 {
 			t.Fatal("invalid agent configuration succeeded")
 		}
 		s, _, e := statusText(state, false)

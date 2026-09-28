@@ -38,7 +38,7 @@ Source: "{#ProjectRoot}\dist\windows-{#Arch}\dfman-notify.exe"; DestDir: "{app}"
 Source: "{#SourcePath}\.dfman-package"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
-Filename: "{app}\dfman.exe"; Parameters: "agent uninstall"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveAgent"
+Filename: "{app}\dfman.exe"; Parameters: "_package remove"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveAgent"
 
 [Code]
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -46,8 +46,8 @@ var Code: Integer;
 begin
   Result := '';
   if FileExists(ExpandConstant('{app}\dfman.exe')) then
-    if not Exec(ExpandConstant('{app}\dfman.exe'), 'agent uninstall', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
-      Result := 'Could not stop the existing dfman agent. Run dfman agent status before retrying.';
+    if not Exec(ExpandConstant('{app}\dfman.exe'), '_package remove', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+      Result := 'Could not stop the existing dfman agent. Run dfman status before retrying.';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

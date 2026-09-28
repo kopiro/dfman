@@ -212,55 +212,44 @@ func Execute(args []string, version string, in io.Reader, out, errOut io.Writer)
 		root.AddCommand(cmd)
 	}
 	var ack bool
-	status := &cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error { return printStatus(state, ack, out) }}
+	status := &cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		c, err := load()
+		if err != nil {
+			fmt.Fprintln(out, "Configuration:", err)
+		} else {
+			fmt.Fprintf(out, "Automatic sync: enabled=%t, interval=%s, mode=%s\n", c.Agent.Enabled, c.Agent.Interval, c.Agent.SyncMode)
+		}
+		if err := platformAgentStatus(cmd.Context(), out); err != nil {
+			fmt.Fprintln(out, "Scheduler unavailable:", err)
+		}
+		return printStatus(state, ack, out)
+	}}
 	status.Flags().BoolVar(&ack, "ack", false, "Dismiss recovery notices")
 	root.AddCommand(status)
-	agent := &cobra.Command{Use: "agent", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
-	root.AddCommand(agent)
-	for _, action := range []string{"uninstall", "run", "status"} {
-		action := action
-		agent.AddCommand(&cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-			if action == "uninstall" {
-				if e := writeAtomic(filepath.Join(state, "agent-disabled"), []byte("disabled"), 0600); e != nil {
-					return e
-				}
-				return uninstallAgent(cmd.Context(), out)
-			}
-			if action == "status" {
-				e := platformAgentStatus(cmd.Context(), out)
-				se := printStatus(state, false, out)
-				if e != nil {
-					return e
-				}
-				return se
-			}
-			c, e := load()
-			if e != nil {
-				if action == "run" {
-					return agentConfigError(cmd.Context(), state, e, out)
-				}
-				return e
-			}
-			if len(c.Folders) > 0 {
-				if _, e = c.Selected(""); e != nil {
-					if action == "run" {
-						return agentConfigError(cmd.Context(), state, e, out)
-					}
-					return e
-				}
-			}
-
-			return runAgent(cmd.Context(), c, state, out, desktopNotify, version)
-		}})
-	}
 	packageCmd := &cobra.Command{Use: "_package", Hidden: true}
-	for _, action := range []string{"setup", "login", "remove"} {
+	for _, action := range []string{"setup", "login", "remove", "run"} {
 		action := action
 		packageCmd.AddCommand(&cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			if action == "run" {
+				c, err := load()
+				if err != nil {
+					return agentConfigError(cmd.Context(), state, err, out)
+				}
+				if !c.Agent.Enabled {
+					fmt.Fprintln(out, "Automatic sync is disabled.")
+					return nil
+				}
+				if len(c.Folders) > 0 {
+					if _, err := c.Selected(""); err != nil {
+						return agentConfigError(cmd.Context(), state, err, out)
+					}
+				}
+				return runAgent(cmd.Context(), c, state, out, desktopNotify, version)
+			}
 			if action == "remove" {
 				return removePackageAgent(cmd.Context(), state, out)
 			}
-			err := setupPackageAgent(cmd.Context(), configFile, state, out, action == "setup")
+			err := setupPackageAgent(cmd.Context(), configFile, state, out)
 			if err != nil {
 				_ = reportProblem(state, "setup", err.Error())
 			} else {

@@ -16,6 +16,7 @@ type Folder struct {
 	Target string `toml:"target"`
 }
 type AgentConfig struct {
+	Enabled  bool   `toml:"enabled"`
 	Interval string `toml:"interval"`
 	SyncMode string `toml:"sync_mode"`
 }
@@ -25,8 +26,10 @@ type Config struct {
 	Folders      []Folder    `toml:"folders"`
 }
 
-func DefaultConfig() Config { return Config{Notification: true, Agent: AgentConfig{"10m", "normal"}} }
-func configPath() string    { h, _ := os.UserHomeDir(); return filepath.Join(h, ".config", "dfman.conf") }
+func DefaultConfig() Config {
+	return Config{Notification: true, Agent: AgentConfig{Enabled: true, Interval: "10m", SyncMode: "normal"}}
+}
+func configPath() string { h, _ := os.UserHomeDir(); return filepath.Join(h, ".config", "dfman.conf") }
 func statePath() string {
 	h, _ := os.UserHomeDir()
 	if s := os.Getenv("XDG_STATE_HOME"); s != "" {
