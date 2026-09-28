@@ -17,15 +17,23 @@ import (
 	"github.com/gofrs/flock"
 )
 
+type FileChange struct {
+	Kind    string `json:"kind"`
+	Path    string `json:"path"`
+	OldPath string `json:"old_path,omitempty"`
+}
+
 type Result struct {
-	Repo       string    `json:"repo"`
-	Kind       string    `json:"kind"`
-	Detail     string    `json:"detail"`
-	Pulled     bool      `json:"pulled,omitempty"`
-	Pushed     bool      `json:"pushed,omitempty"`
-	Backup     string    `json:"backup,omitempty"`
-	LocalSaved bool      `json:"local_saved,omitempty"`
-	At         time.Time `json:"at"`
+	PulledFiles []FileChange `json:"pulled_files,omitempty"`
+	PushedFiles []FileChange `json:"pushed_files,omitempty"`
+	Repo        string       `json:"repo"`
+	Kind        string       `json:"kind"`
+	Detail      string       `json:"detail"`
+	Pulled      bool         `json:"pulled,omitempty"`
+	Pushed      bool         `json:"pushed,omitempty"`
+	Backup      string       `json:"backup,omitempty"`
+	LocalSaved  bool         `json:"local_saved,omitempty"`
+	At          time.Time    `json:"at"`
 }
 
 func (r Result) Code() int {
@@ -255,6 +263,13 @@ func syncRepo(ctx context.Context, root string, reset bool, key string) (r Resul
 			return fail(e)
 		}
 		pulled := !a
+		var pulledFiles []FileChange
+		if pulled {
+			pulledFiles, e = changedFiles(ctx, root, head, remote)
+			if e != nil {
+				return fail(e)
+			}
+		}
 		snapshot, ref, e := snapshotRepo(ctx, root, gitDir, head, oldBranch)
 		if e != nil {
 			return fail(e)
@@ -272,6 +287,7 @@ func syncRepo(ctx context.Context, root string, reset bool, key string) (r Resul
 		}
 		r.Kind = "ok"
 		r.Pulled = pulled
+		r.PulledFiles = pulledFiles
 		r.Detail = "Reset to origin/" + branch + ". Recovery: " + snapshot
 		return r
 	}
@@ -319,8 +335,16 @@ func syncRepo(ctx context.Context, root string, reset bool, key string) (r Resul
 			return fail(e)
 		}
 		r.Pulled = true
+		r.PulledFiles, e = changedFiles(ctx, root, head, "HEAD")
+		if e != nil {
+			return fail(e)
+		}
 	}
 	head, e = git(ctx, root, "", "rev-parse", "HEAD")
+	if e != nil {
+		return fail(e)
+	}
+	pushedFiles, e := changedFiles(ctx, root, remote, head)
 	if e != nil {
 		return fail(e)
 	}
@@ -328,6 +352,7 @@ func syncRepo(ctx context.Context, root string, reset bool, key string) (r Resul
 		return fail(fmt.Errorf("push failed; local commits are preserved: %w", e))
 	}
 	r.Pushed = head != remote
+	r.PushedFiles = pushedFiles
 	r.Kind = "ok"
 	r.Detail = "Synchronized with origin/" + branch
 	return r

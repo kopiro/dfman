@@ -97,6 +97,9 @@ func statusText(state string, ack bool) (string, string, error) {
 				return "", "", e
 			}
 			line := fmt.Sprintf("%s: %s\n%s\n", r.Repo, r.Kind, r.Detail)
+			for _, entry := range transferLines(r) {
+				line += entry + "\n"
+			}
 			if kind == "notices" {
 				line = "Local differences saved: " + r.Repo + "\nRecovery: " + r.Backup + "\n"
 			}

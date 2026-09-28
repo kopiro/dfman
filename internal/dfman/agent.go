@@ -77,16 +77,7 @@ func runAgent(ctx context.Context, c Config, state string, out io.Writer, notify
 		title, body := "", ""
 		if r.Kind == "ok" {
 			os.Remove(seenPath)
-			if r.Pulled && r.Pushed {
-				title = "Sync complete"
-				body = "Pulled and pushed updates."
-			} else if r.Pulled {
-				title = "Pulled updates"
-				body = "Received new data."
-			} else if r.Pushed {
-				title = "Pushed updates"
-				body = "Published new data."
-			}
+			title, body = transferNotice(r)
 		} else {
 			title = "Sync needs attention"
 			body = "Run dfman status for details."
