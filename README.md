@@ -1,340 +1,164 @@
 # dfman
 
-Small dotfiles manager for copying files into a dotfiles directory and linking
-them back into a target directory.
+A native dotfiles manager for macOS, Linux, and Windows. Keep files in Git,
+link them into place, and optionally synchronize them from your desktop session.
 
-## Installation
+## Install
 
-### macOS and Linux
+Requires Git 2.38 or newer. Download the package for your OS and architecture
+from [Releases](https://github.com/kopiro/dfman/releases), verify its SHA-256
+against `checksums.txt`, and extract **all** components into `~/.local/bin`
+(or another directory on PATH). Keep the notification helper beside `dfman`.
 
-Install `dfman` with `wget`:
+Alternatively, download and inspect the repository's `install.sh` (macOS/Linux)
+or `install.ps1` (Windows), then run it. These installers fetch versioned release
+packages and verify checksums. `DFMAN_VERSION=v1.0.0` / `-Version v1.0.0` selects
+a particular release. Windows installation adds the directory to your user PATH.
 
-```bash
-mkdir -p "$HOME/.local/bin"
-wget -O "$HOME/.local/bin/dfman" https://raw.githubusercontent.com/kopiro/dfman/main/dfman
-chmod 0755 "$HOME/.local/bin/dfman"
-```
+Installing the executable never installs or enables an agent. Git authentication
+must already work without an interactive prompt. Existing SSH configuration,
+credential helpers, and repository-local Git settings are respected.
 
-Make sure `$HOME/.local/bin` is in your `PATH`:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-### Windows
-
-Install Git for Windows, then run in PowerShell:
-
-```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/kopiro/dfman/main/install.ps1 -OutFile "$env:TEMP\dfman-install.ps1"
-& "$env:TEMP\dfman-install.ps1"
-```
-
-The installer adds `%USERPROFILE%\.local\bin` to your user PATH. Open a new
-terminal and use `dfman` from PowerShell, cmd, or Git Bash. No WSL is needed.
-Enable Windows Developer Mode or use an elevated terminal to create symlinks.
-dfman uses native Windows symlinks and fails if it cannot create them; it never
-silently substitutes copies. This follows the
-[MSYS2 native symlink behavior](https://www.msys2.org/docs/symlinks/).
-
-Configuration remains `~/.config/dfman.conf`, under your Windows user profile.
-Use `~/.dotfiles`, `C:/Users/name/dotfiles`, or Git Bash `/c/Users/name/dotfiles`
-paths. Configuration entries cannot contain whitespace or `#`; `~` works even
-when the user profile path contains spaces. Repositories must contain
-Windows-compatible filenames. When cloning repositories containing symlinks,
-use `git -c core.symlinks=true clone ...` with symlink permission enabled.
-
-For unattended runs, configure Task Scheduler to run as the repository owner
-every ten minutes, whether logged on or not, and avoid overlapping instances.
-Use `cmd.exe /d /c` with this command (substitute your profile path):
-
-```bat
-call C:\Users\name\.local\bin\dfman.cmd sync && call C:\Users\name\.local\bin\dfman.cmd link
-```
-
-The task needs non-interactive Git authentication and permission to create
-symlinks. `sync` commits and pushes local changes as well as pulling updates.
+The Windows desktop agent needs Developer Mode for native symlinks from its
+non-elevated session. Manual linking can also use symlink privilege. Links are native symlinks;
+dfman never substitutes copies. Clone symlink-bearing repositories using
+`git -c core.symlinks=true clone ...` with that privilege enabled.
 
 ## Configuration
 
-`dfman` reads sources from `$HOME/.config/dfman.conf`.
+Create `~/.config/dfman.conf` as TOML:
 
-Create an initial config with `repo-add`:
+```toml
+notification = true
 
-```bash
-mkdir -p "$HOME/.dotfiles"
-dfman repo-add '~/.dotfiles'
+[agent]
+interval = "10m"
+sync_mode = "normal"
+
+[[folders]]
+source = "~/.ko-prefs/dotfiles"
+target = "~"
+
+[[folders]]
+source = "~/.prefs/dotfiles"
 ```
 
-Use the path where your dotfiles already live instead of `~/.dotfiles` if
-needed.
+The first folder wins when link destinations overlap. `target` defaults to `~`.
+Paths must be absolute or start with `~`; spaces are supported. On Windows,
+use forward slashes in double-quoted strings or literal TOML strings such as
+`source = 'C:\Users\name\dotfiles'`. Git Bash `/c/...` paths are not native paths.
+Unknown options, invalid intervals, and legacy line-based configurations are
+rejected before synchronization. Run `dfman config validate` after editing.
 
-Each non-comment line contains a source directory and an optional target
-directory:
-
-```text
-# source [target]
-~/.work-dotfiles
-~/.dotfiles
-```
-
-Repo order matters: sources earlier in the file have higher priority because
-they are linked first. On a work computer, you might configure
-`~/.work-dotfiles` before `~/.dotfiles`; on a personal computer, you might only
-configure `~/.dotfiles`.
-
-If target is not provided, `dfman` uses `$HOME`.
-Paths must be absolute or start with `~`.
+`notification` affects agents only. `sync_mode` is `normal` or `reset`.
+Intervals are whole minutes from `1m` through `24h`. Run `dfman agent install`
+again after changing the interval. Other config changes apply on the next run.
 
 ## Commands
 
-### `dfman list`
-
-Lists dotfiles grouped by repository in configuration order, showing each source
-entry and its destination path. Encoded `#` separators are expanded to `/` in
-destinations. Directories are listed as a single entry, matching `dfman link`.
-Listing does not create or change any links.
-
-```bash
-dfman list
-dfman list --repo '~/.work-dotfiles'
+```text
+dfman repo add <source> [target]
+dfman repo remove <source>
+dfman repo sync [--repo <source>] [--reset] [--ssh-key <path>]
+dfman sync [--repo <source>] [--reset] [--ssh-key <path>]
+dfman link [--repo <source>] [--dry-run] [--force] [--verbose]
+dfman list [--repo <source>]
+dfman create <absolute-path> --repo <source>
+dfman doctor [--repo <source>]
+dfman status [--ack]
+dfman config validate
+dfman version
+dfman self update [--check]
+dfman agent install|uninstall|run|status
+dfman shell install|uninstall|init|status [zsh]
 ```
 
-In a terminal, repository headings are cyan, files green, directories blue, and
-symlinks magenta. Output is plain text when redirected, when `TERM=dumb`, or
-when `NO_COLOR` is nonempty. Empty repositories are shown as `(no dotfiles)`.
+Global `--config <file>` and `--state-dir <directory>` support isolated setups.
+Hyphenated command names and the old auto-sync runner have been removed.
 
-### `dfman link`
+### Linking
 
-Links files from configured source repos into their target directories. When
-multiple repos are configured, they are linked in config order. Existing valid
-links are only printed when verbose output is enabled.
+Top-level source entries are linked into the target. `#` in a filename represents
+a directory boundary: `.config#example` links to `~/.config/example`. `.git` is
+excluded. Existing correct links remain untouched. Conflicting files, directories,
+or links are skipped; `--force` asks before replacing each one. `create` copies a
+file or directory into the selected source, then asks whether to remove the original.
+`doctor` reports broken source symlinks.
 
-```bash
-dfman link
-```
+### Synchronization and recovery
 
-Show existing valid links:
+Normal sync fetches the current branch, commits local changes, checks for conflicts,
+merges remote changes, then pushes. Conflicts leave local work committed and do not
+leave a new unresolved merge. Failed pushes retain local commits for the next run.
+Multiple folders within one Git repository are synchronized once. Existing merges,
+rebases, or conflicts must be resolved manually; repositories with submodules are
+refused. Git commands have a two-minute timeout and non-interactive prompts.
 
-```bash
-dfman link -v
-```
+`sync --reset` explicitly makes a replica match origin's advertised default branch.
+Before changing local files or branch tips, it archives the working tree (including
+ignored and untracked files), saves the index, and creates recovery refs. Snapshots
+live under the repository's Git directory in `dfman-recovery/`. Each contains a
+README with the old HEAD and recovery reference. Inspect the tar archive in a
+separate directory before restoring selected files; recover committed history with
+`git branch recovered <recovery-ref>/head`. Snapshots are never automatically deleted.
+Ignored files remain in place; ignored paths that block checkout cause a safe failure.
 
-Link only one configured source:
+`dfman status` reports results, notification failures, and saved local differences.
+`status --ack` dismisses notices, preserving recovery data. OS locks release when a
+process exits. Exit codes: `0` success, `1` error, `2` Git conflict, `75` already running.
 
-```bash
-dfman link --repo '~/.work-dotfiles'
-```
+### Desktop agent
 
-Preview changes without writing files:
+Run `dfman agent install` explicitly from the signed-in desktop account. It installs:
 
-```bash
-dfman link --dry-run
-```
+- macOS: `~/Library/LaunchAgents/com.kopiro.dfman.agent.plist` (Aqua session).
+- Linux: `~/.config/systemd/user/dfman-agent.service` and `.timer`, attached to
+  `graphical-session.target`.
+- Windows: interactive Task Scheduler task `dfman-agent`, under the current user, without elevation.
 
-Replace conflicting files or symlinks interactively:
+Agents sync, then link only when all repositories synchronize successfully.
+No-change runs are silent. Pulled/pushed data and new errors produce notifications;
+identical unresolved errors are suppressed after successful delivery. Delivery
+failures appear in status without changing the Git exit result. Manual sync and link
+never notify. macOS requests notification permission during explicit installation.
+Linux talks to the desktop notification service over D-Bus; Windows registers a
+dfman Start Menu identity and uses native toasts. No notification utility is required.
 
-```bash
-dfman link -f
-```
+Agent logs and status are in `~/.local/state/dfman` (or `$XDG_STATE_HOME/dfman`).
+`agent status` shows both scheduler and run status. `agent uninstall` removes only
+its registration and Windows notification shortcut; it leaves configuration, links,
+repositories, and recovery data intact. Agents run only in signed-in desktop sessions.
 
-### `dfman repo-add`
+### Shell integration and updates
 
-Adds a source repo to `$HOME/.config/dfman.conf`. The target is optional and
-defaults to `$HOME`.
+`dfman shell install zsh` adds a managed startup block, preserving a symlinked
+`.zshrc`. Prompt notices show unresolved problems once per changed message.
+Healthy prompts are silent. Use `dfman self update --check` to check releases;
+`dfman self update` downloads and verifies the full platform package. On Windows,
+a separate process replaces the executable after it exits; `dfman-update.log`
+beside the executable records the result. Reinstall the agent after updating.
 
-```bash
-dfman repo-add '~/.work-dotfiles' '~'
-```
+## Migrating from Bash
 
-### `dfman repo-rm`
+This is a breaking release. See [MIGRATION.md](MIGRATION.md) for configuration,
+command, scheduler, and rollback steps. Do not point a raw-script updater at the
+native executable.
 
-Removes a configured source from `$HOME/.config/dfman.conf`.
+## Build and test
 
-```bash
-dfman repo-rm '~/.work-dotfiles'
-```
-
-### `dfman repo-sync`
-
-Synchronizes configured Git repos. It fetches the matching branch from `origin`,
-stages local changes, commits them as `sync by {hostname} at YYYY-MM-DD HH:MM:SS`,
-merges compatible remote changes, then pushes. Git 2.38 or newer is required for
-merge preparation. `dfman sync` is an alias of `dfman repo-sync`.
-
-Conflicts are detected before changing the active checkout. Local work remains
-committed, the working files remain usable, and the command exits with status 2.
-Resolve the differences manually, then run sync again. Existing unfinished Git
-operations are never staged or committed automatically. A per-repository lock
-prevents overlapping dfman syncs; stale locks require manual inspection before
-removal. Repositories with submodules are not synchronized automatically.
-
-Exit codes: 0 success, 1 operational failure, 2 conflict/manual Git resolution,
-75 another sync holds the lock. A failed push preserves local commits for retry.
-For multi-repository runs, conflicts take precedence over other failures.
-
-```bash
-dfman repo-sync
-```
-
-Sync only one configured source:
-
-```bash
-dfman repo-sync --repo '~/.dotfiles'
-```
-
-Use a specific SSH key for pull and push:
-
-```bash
-dfman sync --repo '~/.dotfiles' --ssh-key '~/.ssh/id_ed25519_work'
-```
-
-For an explicitly designated replica, replace local state with the default
-branch on `origin`. Before any change, dfman saves the working files (including
-untracked and ignored files), the Git index, and references protecting the old
-HEAD and the branch being replaced. If backup creation fails, reset stops.
-An already clean, aligned replica needs no new snapshot.
-
-Snapshots are stored in the repository's Git directory under
-`dfman-recovery/<timestamp>-<pid>/`. They contain private data and have restricted
-permissions. They are not uploaded, automatically expired, or deleted by reset.
-Incoming remote updates also get a snapshot; only discarded local differences
-produce a reset notification. Ignored files are not cleaned; a checkout that
-would overwrite one stops instead. Avoid concurrent non-dfman writers during
-sync/reset: repository locks only serialize dfman processes.
-
-Reset refuses unfinished merges/rebases, just like ordinary sync. It remains a
-replacement operation, not a merge:
-
-```bash
-dfman sync --reset
-```
-
-Reset only one configured source:
-
-```bash
-dfman sync --reset --repo '~/.dotfiles'
-```
-
-### Recovering a reset
-
-The command prints the snapshot directory and recovery reference. To inspect
-saved commits, use `git log refs/dfman/recovery/<id>/head`. Create a new branch
-from that reference when ready to recover committed work. A `/branch` reference
-also preserves the former tip of the branch replaced by reset, if it existed.
-
-Extract `<snapshot>/files.tar` into a separate empty directory to inspect
-uncommitted and untracked files, then copy only the files you want back. Do not
-extract it blindly over active dotfiles. `index` preserves the previous staging
-state; `README` records repository and commit identities. After recovery, remove
-unneeded snapshots and their `refs/dfman/recovery/<id>/*` refs explicitly.
-
-### Scheduled synchronization and terminal notices
-
-Install the optional `dfman-auto-sync` Bash runner beside dfman at
-`~/.local/bin/dfman-auto-sync` with executable permissions. It runs sync and
-links only after success, and saves local status. It sends no external
-notifications and needs no notification service or credentials.
-
-For an editing machine:
-
-```cron
-*/10 * * * * ~/.local/bin/dfman-auto-sync
-```
-
-For an explicitly designated replica, append `--reset`. Existing working
-intervals may be kept. `--repo` and `--ssh-key` are forwarded to sync; linking
-respects `--repo`. Windows Task Scheduler can invoke the runner with Git Bash.
-
-The runner writes its latest log to `~/.local/state/dfman/sync.log`. Run
-`dfman status` to see the last scheduled result, unresolved problems, and
-recovery paths. `dfman status --ack` dismisses informational reset backup
-notices; it never clears unresolved failures. Successful syncs clear failures
-for the repositories involved. State and backups stay on the local machine.
-
-Install the interactive terminal hook with:
+Go (version in `go.mod`) and Git are needed for the shared core. Native macOS
+packages need Xcode command-line tools; Windows packages need the Visual Studio
+C++ tools and Windows SDK. Linux notification support is pure Go.
 
 ```sh
-dfman shell install
+go test -race ./...
+go vet ./...
+bash scripts/build-macos.sh dist/darwin-arm64 arm64
+# Linux: GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o dist/linux-amd64/dfman ./cmd/dfman
+# Windows developer shell: ./scripts/build-windows.ps1 -Arch amd64
+python3 scripts/package.py v1.0.0 darwin-arm64
 ```
 
-Automatic integration currently supports **zsh**. Pass `zsh` explicitly if your
-`SHELL` environment identifies another shell. The installer honors `ZDOTDIR`,
-preserves `.zshrc` symlinks by editing their resolved source, and replaces only
-its marked block. Running it repeatedly adds no duplicates. It also migrates
-the previous manual `dfman.zsh` source line. Open a new terminal afterward, or
-run `eval "$(dfman shell init zsh)"` in the current one.
-
-`dfman shell status` prints actual unresolved errors and backup notices, with
-nothing printed when healthy. The installed hook calls it before each prompt
-and suppresses unchanged messages within that shell session. New sessions show
-unresolved problems again. `dfman status` remains the complete report.
-
-`dfman shell uninstall` removes only the managed startup integration. Already
-open terminals can remove the hook with
-`add-zsh-hook -d precmd _dfman_prompt_notice`, or simply reopen. Status files,
-backups, and scheduled synchronization are retained.
-
-Shell status also schedules a **background update check at most every six
-hours**. It reads cached results immediately and never waits for the network.
-The scheduled runner can refresh the same cache without an open terminal.
-Checks have bounded network timeouts; offline failures are quiet and do not
-change the installed executable. The latest commit is resolved through GitHub's
-public API, then downloaded by its immutable SHA to avoid stale branch caches.
-API rate limits leave the previous result untouched until the next check. Run `dfman self-update --check` to request a fresh check.
-When the published script differs, the prompt proposes `dfman self-update`;
-it never applies the update automatically. Comparison uses script contents,
-not version numbers: an unpublished local edit can also differ from the
-published copy. A result for a different installed file is ignored.
-
-Overrides: `DFMAN_BIN`, `XDG_STATE_HOME`. `DFMAN_REPORT_DIR` is the internal
-sync report destination used by the runner. Interrupted runner locks appear
-in status and require inspection/removal rather than automatic lock stealing.
-
-### `dfman create`
-
-Imports an existing file into a specific configured source. Nested paths are
-stored using `#` separators. After importing and optionally removing the
-original file, run `dfman link` when you are ready to create the symlink.
-
-```bash
-dfman create --repo '~/.dotfiles' "$HOME/.zshrc"
-```
-
-### `dfman doctor`
-
-Finds broken symlinks inside configured source repos.
-
-```bash
-dfman doctor
-```
-
-Check only one configured source:
-
-```bash
-dfman doctor --repo '~/.work-dotfiles'
-```
-
-### `dfman self-update`
-
-Updates the installed `dfman` executable from GitHub. Use `--check` to compare
-with the published copy without installing it.
-
-```bash
-dfman self-update
-```
-
-## Nested Paths
-
-`dfman` stores nested target paths as flat filenames by replacing `/` with `#`.
-For example, this source file:
-
-```text
-$HOME/.dotfiles/.config#git#config
-```
-
-links to:
-
-```text
-$HOME/.config/git/config
-```
+CI tests macOS/Linux/Windows and builds amd64/arm64 packages for each. The workflow
+produces release artifacts and checksums but does not publish. Release publication
+requires the three-host desktop validation gate documented in [RELEASE.md](RELEASE.md).

@@ -1,49 +1,22 @@
-param(
-    [string]$InstallDirectory = "$env:USERPROFILE\.local\bin",
-    [string]$Ref = 'main',
-    [string]$SourceDirectory
-)
-
-$ErrorActionPreference = 'Stop'
-# Use Git for Windows, not WSL's unrelated bash.exe.
-$git = (Get-Command git.exe -ErrorAction Stop).Source
-$gitRoot = Split-Path (Split-Path $git)
-$bash = Join-Path $gitRoot 'bin\bash.exe'
-if (!(Test-Path $bash)) {
-    throw 'Install Git for Windows and put git.exe on PATH first.'
-}
-
-New-Item -ItemType Directory -Force $InstallDirectory | Out-Null
-$script = Join-Path $InstallDirectory 'dfman'
-$temporary = Join-Path $InstallDirectory ('.dfman-' + [guid]::NewGuid())
+param([string]$Version='latest',[string]$InstallDirectory=(Join-Path $HOME '.local\bin'))
+$ErrorActionPreference='Stop'
+if($Version -eq 'latest'){$Version=(Invoke-RestMethod 'https://api.github.com/repos/kopiro/dfman/releases/latest').tag_name}
+if($Version -notmatch '^v[0-9][0-9A-Za-z.\-]*$'){throw 'Invalid release version'}
+$arch=if([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64'){'arm64'}else{'amd64'}
+$name="dfman_${Version}_windows_${arch}.zip"
+$base="https://github.com/kopiro/dfman/releases/download/$Version"
+$temp=Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+New-Item -ItemType Directory -Path $temp | Out-Null
 try {
-    if ($SourceDirectory) {
-        Copy-Item (Join-Path $SourceDirectory 'dfman') $temporary
-    } else {
-        Invoke-WebRequest "https://raw.githubusercontent.com/kopiro/dfman/$Ref/dfman" -OutFile $temporary
-    }
-    $content = [IO.File]::ReadAllText($temporary).Replace("`r`n", "`n")
-    if (!$content.StartsWith("#!/bin/bash`n")) { throw 'Invalid dfman download.' }
-    [IO.File]::WriteAllText($temporary, $content, [Text.UTF8Encoding]::new($false))
-    Move-Item -Force $temporary $script
-} finally {
-    if (Test-Path $temporary) { Remove-Item $temporary }
-}
-
-# Start a clean Bash so shell profiles cannot change unattended behavior.
-# Supply Git's utilities on PATH for SSH sessions and Task Scheduler too.
-$launcher = @"
-@echo off
-setlocal
-set "PATH=$gitRoot\bin;$gitRoot\usr\bin;%PATH%"
-"$bash" --noprofile --norc "%~dp0dfman" %*
-exit /b %ERRORLEVEL%
-"@
-[IO.File]::WriteAllText((Join-Path $InstallDirectory 'dfman.cmd'), $launcher.Replace("`n", "`r`n"), [Text.UTF8Encoding]::new($false))
-$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-if ($InstallDirectory -notin ($userPath -split ';')) {
-    [Environment]::SetEnvironmentVariable('Path', "$InstallDirectory;$userPath", 'User')
-}
-$env:Path = "$InstallDirectory;$env:Path"
-Write-Host "Installed dfman in $InstallDirectory. Open a new terminal to use dfman."
-Write-Host 'Linking requires Windows Developer Mode or an elevated terminal.'
+ Invoke-WebRequest "$base/$name" -OutFile (Join-Path $temp $name)
+ $sums=(Invoke-WebRequest "$base/checksums.txt").Content
+ $expected=($sums -split "`n" | Where-Object {($_ -split '\s+')[1] -eq $name}) -split '\s+' | Select-Object -First 1
+ $actual=(Get-FileHash (Join-Path $temp $name) -Algorithm SHA256).Hash
+ if(!$expected -or $actual -ne $expected){throw 'Checksum verification failed'}
+ Expand-Archive (Join-Path $temp $name) (Join-Path $temp 'package')
+ New-Item -ItemType Directory -Force -Path $InstallDirectory | Out-Null
+ foreach($file in @('dfman.exe','dfman-notify.exe')){Copy-Item (Join-Path $temp "package\$file") (Join-Path $InstallDirectory $file) -Force}
+ $current=[Environment]::GetEnvironmentVariable('Path','User')
+ if(($current -split ';') -notcontains $InstallDirectory){[Environment]::SetEnvironmentVariable('Path',"$InstallDirectory;$current",'User')}
+ Write-Host "Installed $Version. Open a new terminal. Agent installation is separate: dfman agent install"
+} finally {Remove-Item -LiteralPath $temp -Recurse -Force}

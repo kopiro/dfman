@@ -1,1 +1,14 @@
-~/.dotfiles
+notification = true
+
+[agent]
+interval = "10m"
+sync_mode = "normal"
+
+# First folder wins when destinations overlap. target defaults to "~".
+[[folders]]
+source = "~/.ko-prefs/dotfiles"
+target = "~"
+
+[[folders]]
+source = "~/.prefs/dotfiles"
+target = "~"

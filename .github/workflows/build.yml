@@ -1,0 +1,74 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Package version (does not publish a release)
+        default: dev
+        required: true
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race ./...
+      - run: go vet ./...
+  package:
+    strategy:
+      matrix:
+        include:
+          - {os: macos-latest, platform: darwin, arch: arm64}
+          - {os: macos-latest, platform: darwin, arch: amd64}
+          - {os: ubuntu-latest, platform: linux, arch: arm64}
+          - {os: ubuntu-latest, platform: linux, arch: amd64}
+          - {os: windows-latest, platform: windows, arch: arm64, msvc: amd64_arm64}
+          - {os: windows-latest, platform: windows, arch: amd64, msvc: amd64}
+    runs-on: ${{ matrix.os }}
+    env:
+      DFMAN_VERSION: ${{ inputs.version || 'dev' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc }}
+      - if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -OutputDirectory dist/windows-${{ matrix.arch }} -Arch ${{ matrix.arch }} -Version $env:DFMAN_VERSION
+      - if: matrix.platform == 'darwin'
+        run: bash scripts/build-macos.sh dist/darwin-${{ matrix.arch }} ${{ matrix.arch }}
+      - if: matrix.platform == 'linux'
+        run: GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$DFMAN_VERSION" -o dist/linux-${{ matrix.arch }}/dfman ./cmd/dfman
+      - shell: bash
+        run: python3 scripts/package.py "$DFMAN_VERSION" ${{ matrix.platform }}-${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dfman-${{ matrix.platform }}-${{ matrix.arch }}
+          path: dist/*.zip
+  checksums:
+    needs: [test, package]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dfman-*
+          merge-multiple: true
+          path: packages
+      - run: cd packages && sha256sum *.zip > checksums.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: packages/*
