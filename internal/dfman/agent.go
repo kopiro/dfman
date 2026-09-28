@@ -151,6 +151,7 @@ func agentConfigError(ctx context.Context, state string, cause error, out io.Wri
 			reportProblem(state, "notification", e.Error())
 		} else {
 			writeAtomic(seen, []byte(fingerprint), 0600)
+			reportProblem(state, "notification", "")
 			fmt.Fprintln(out, "Notification delivered: Configuration needs attention")
 		}
 	}

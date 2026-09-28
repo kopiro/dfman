@@ -434,3 +434,19 @@ func testExecutable(t *testing.T) string {
 	}
 	return p
 }
+
+func TestAgentInvalidConfigRecordsError(t *testing.T) {
+	for _, contents := range []string{"~/legacy", "notification=false\n", "[agent]\ninterval='61s'\n"} {
+		d := t.TempDir()
+		p := filepath.Join(d, "config")
+		put(t, p, contents)
+		state := filepath.Join(d, "state")
+		if Execute([]string{"--config", p, "--state-dir", state, "agent", "run"}, "test", strings.NewReader(""), io.Discard, io.Discard) != 1 {
+			t.Fatal("invalid agent configuration succeeded")
+		}
+		s, _, e := statusText(state, false)
+		if e != nil || !strings.Contains(s, "config: error") {
+			t.Fatal(s, e)
+		}
+	}
+}

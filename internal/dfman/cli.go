@@ -237,6 +237,9 @@ func Execute(args []string, version string, in io.Reader, out, errOut io.Writer)
 				return e
 			}
 			if _, e = c.Selected(""); e != nil {
+				if action == "run" {
+					return agentConfigError(cmd.Context(), state, e, out)
+				}
 				return e
 			}
 			if action == "install" {
