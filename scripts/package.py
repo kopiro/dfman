@@ -14,5 +14,7 @@ for platform in sys.argv[2:]:
             if item.is_file():
                 archive.write(item, item.relative_to(source))
 with (root / 'checksums.txt').open('w') as checksums:
-    for archive in sorted(root.glob(f'dfman_{version}_*.zip')):
+    for archive in sorted(root.glob(f'dfman_{version}_*')):
+        if not archive.is_file():
+            continue
         checksums.write(f'{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n')

@@ -5,19 +5,29 @@ link them into place, and optionally synchronize them from your desktop session.
 
 ## Install
 
-Requires Git 2.38 or newer. Download the package for your OS and architecture
-from [Releases](https://github.com/kopiro/dfman/releases), verify its SHA-256
-against `checksums.txt`, and extract **all** components into `~/.local/bin`
-(or another directory on PATH). Keep the notification helper beside `dfman`.
+Requires Git 2.38 or newer. Download an installer from
+[Releases](https://github.com/kopiro/dfman/releases) and verify its SHA-256 against
+`checksums.txt`:
 
-Alternatively, download and inspect the repository's `install.sh` (macOS/Linux)
-or `install.ps1` (Windows), then run it. These installers fetch versioned release
-packages and verify checksums. `DFMAN_VERSION=v1.0.0` / `-Version v1.0.0` selects
-a particular release. Windows installation adds the directory to your user PATH.
+- **macOS:** open the `.pkg`. It installs into `/usr/local/libexec/dfman` with a
+  command at `/usr/local/bin/dfman`.
+- **Ubuntu:** run `sudo apt install ./dfman_<version>_linux_<arch>.deb`.
+- **Windows:** run the `_setup.exe` as your normal desktop user. It installs into
+  `%USERPROFILE%\.local\bin` and adds that directory to your user PATH.
 
-Installing the executable never installs or enables an agent. Git authentication
-must already work without an interactive prompt. Existing SSH configuration,
-credential helpers, and repository-local Git settings are respected.
+Installers automatically configure the agent for the desktop user. macOS and
+Ubuntu also configure new desktop sessions at login. Existing configuration is
+preserved. A new installation creates an empty `~/.config/dfman.conf`; add your
+folders with `dfman repo add <source> [target]`. Until then, the agent is idle.
+Git authentication must already work without an interactive prompt.
+
+macOS packages are currently **unsigned and not notarized**. Windows installers
+are unsigned as well. Operating systems may display an unverified-publisher
+warning. No signing keys or notarization credentials are used in CI.
+
+The repository's `install.sh` and `install.ps1` download the native installer,
+verify its checksum, and run it. ZIP archives remain available for portable
+manual use; extracting a ZIP does not configure an agent.
 
 The Windows desktop agent needs Developer Mode for native symlinks from its
 non-elevated session. Manual linking can also use symlink privilege. Links are native symlinks;
@@ -51,8 +61,9 @@ Unknown options, invalid intervals, and legacy line-based configurations are
 rejected before synchronization. Run `dfman config validate` after editing.
 
 `notification` affects agents only. `sync_mode` is `normal` or `reset`.
-Intervals are whole minutes from `1m` through `24h`. Run `dfman agent install`
-again after changing the interval. Other config changes apply on the next run.
+Intervals are whole minutes from `1m` through `24h`. Rerun the installer after
+changing the interval (signing in again also applies it on macOS and Ubuntu).
+Other config changes apply on the next run.
 
 ## Commands
 
@@ -69,8 +80,7 @@ dfman status [--ack]
 dfman config validate
 dfman version
 dfman self update [--check]
-dfman agent install|uninstall|run|status
-dfman shell install|uninstall|init|status [zsh]
+dfman agent uninstall|run|status
 ```
 
 Global `--config <file>` and `--state-dir <directory>` support isolated setups.
@@ -109,7 +119,7 @@ process exits. Exit codes: `0` success, `1` error, `2` Git conflict, `75` alread
 
 ### Desktop agent
 
-Run `dfman agent install` explicitly from the signed-in desktop account. It installs:
+The native installer configures:
 
 - macOS: `~/Library/LaunchAgents/com.kopiro.dfman.agent.plist` (Aqua session).
 - Linux: `~/.config/systemd/user/dfman-agent.service` and `.timer`, attached to
@@ -120,23 +130,30 @@ Agents sync, then link only when all repositories synchronize successfully.
 No-change runs are silent. Pulled/pushed data and new errors produce notifications;
 identical unresolved errors are suppressed after successful delivery. Delivery
 failures appear in status without changing the Git exit result. Manual sync and link
-never notify. macOS requests notification permission during explicit installation.
+never notify. macOS requests notification permission during package setup.
 Linux talks to the desktop notification service over D-Bus; Windows registers a
 dfman Start Menu identity and uses native toasts. No notification utility is required.
 
 Agent logs and status are in `~/.local/state/dfman` (or `$XDG_STATE_HOME/dfman`).
 `agent status` shows both scheduler and run status. `agent uninstall` removes only
 its registration and Windows notification shortcut; it leaves configuration, links,
-repositories, and recovery data intact. Agents run only in signed-in desktop sessions.
+repositories, and recovery data intact. It also prevents login hooks from enabling
+the agent again. Rerun the installer to re-enable it. Agents run only in signed-in
+desktop sessions.
 
-### Shell integration and updates
+To remove the entire package: use Windows Installed Apps, `sudo apt remove dfman`,
+or `sudo /usr/local/libexec/dfman/uninstall` on macOS. User data is preserved.
 
-`dfman shell install zsh` adds a managed startup block, preserving a symlinked
-`.zshrc`. Prompt notices show unresolved problems once per changed message.
-Healthy prompts are silent. Use `dfman self update --check` to check releases;
-`dfman self update` downloads and verifies the full platform package. On Windows,
-a separate process replaces the executable after it exits; `dfman-update.log`
-beside the executable records the result. Reinstall the agent after updating.
+### Updates
+
+The agent checks for releases at most once every 24 hours when notifications are
+enabled. It notifies once per newer version with installation instructions.
+Update-check failures appear in status without changing the sync result.
+Updates are never installed automatically.
+
+Use `dfman self update --check` to check manually. For package installations,
+download and run the newer installer. `dfman self update` replaces binaries only
+for portable ZIP installations; it never overwrites package-managed files.
 
 ## Migrating from Bash
 
@@ -162,3 +179,16 @@ python3 scripts/package.py v1.0.0 darwin-arm64
 CI tests macOS/Linux/Windows and builds amd64/arm64 packages for each. The workflow
 produces release artifacts and checksums but does not publish. Release publication
 requires the three-host desktop validation gate documented in [RELEASE.md](RELEASE.md).
+
+### Native installers and CI releases
+
+Build the native payload first using the scripts below, then run
+`scripts/package-macos.sh vX.Y.Z arm64`,
+`scripts/package-linux.sh vX.Y.Z amd64`, or
+`scripts/package-windows.ps1 -Version vX.Y.Z -Arch amd64`.
+Windows packaging requires Inno Setup 6; Ubuntu packaging requires `dpkg-deb`.
+
+CI builds amd64 and arm64 payloads and installers for all three platforms.
+Pushing a `vX.Y.Z` tag automatically publishes all packages and checksums after
+tests, builds, and installer checks pass. Manual workflow runs only build
+artifacts. See [RELEASE.md](RELEASE.md) for the desktop validation gate.

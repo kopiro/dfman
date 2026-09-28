@@ -54,7 +54,7 @@ func desktopNotify(ctx context.Context, title, body, key string) error {
 func installAgent(ctx context.Context, exe, config, state string, c Config, out io.Writer) error {
 	if c.Notification {
 		if e := macNotify(ctx, "authorize"); e != nil {
-			return e
+			_ = reportProblem(state, "notification", e.Error())
 		}
 	}
 	h, e := os.UserHomeDir()

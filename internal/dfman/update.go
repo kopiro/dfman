@@ -115,17 +115,25 @@ func extractPackage(path, dest string) error {
 	}
 	return nil
 }
-func SelfUpdate(ctx context.Context, current string, check bool, out io.Writer) error {
-	b, e := download(ctx, "https://api.github.com/repos/kopiro/dfman/releases/latest", 2<<20)
-	if e != nil {
-		return e
-	}
+func latestRelease(ctx context.Context) (release, error) {
 	var r release
-	if e = json.Unmarshal(b, &r); e != nil {
-		return e
+	b, err := download(ctx, "https://api.github.com/repos/kopiro/dfman/releases/latest", 2<<20)
+	if err != nil {
+		return r, err
+	}
+	if err = json.Unmarshal(b, &r); err != nil {
+		return r, err
 	}
 	if r.Tag == "" {
-		return fmt.Errorf("release has no version")
+		return r, fmt.Errorf("release has no version")
+	}
+	return r, nil
+}
+
+func SelfUpdate(ctx context.Context, current string, check bool, out io.Writer) error {
+	r, e := latestRelease(ctx)
+	if e != nil {
+		return e
 	}
 	if r.Tag == current {
 		fmt.Fprintln(out, "Already up to date:", current)
@@ -134,6 +142,9 @@ func SelfUpdate(ctx context.Context, current string, check bool, out io.Writer) 
 	fmt.Fprintf(out, "Available: %s (installed: %s)\n", r.Tag, current)
 	if check {
 		return nil
+	}
+	if kind := strings.TrimSpace(packageKind()); kind != "" {
+		return fmt.Errorf("installed with %s; download and run the latest installer from https://github.com/kopiro/dfman/releases/latest", kind)
 	}
 	name := fmt.Sprintf("dfman_%s_%s_%s.zip", r.Tag, runtime.GOOS, runtime.GOARCH)
 	urls := map[string]string{}

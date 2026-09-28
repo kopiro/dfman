@@ -1,10 +1,11 @@
 # Release gate
 
-Publish v1.0.0 only when all checks below pass. Building artifacts alone does not
+Push a release tag only when all checks below pass. Building artifacts alone does not
 satisfy the desktop validation gate.
 
 - Automated tests and native package builds for macOS, Linux, Windows.
-- amd64 and arm64 ZIP packages containing the executable and required helper.
+- amd64 and arm64 ZIPs plus macOS PKG, Ubuntu DEB, and Windows EXE installers.
+- Fresh install, reinstall, and uninstall preserve user configuration and data.
 - SHA-256 manifest covering every package.
 - OttoMini: isolated Git/link tests, LaunchAgent install/reinstall/uninstall,
   configured interval, native UserNotifications delivery, error reporting,
@@ -16,6 +17,10 @@ satisfy the desktop validation gate.
 - Old scheduler removed without duplicate work; backups retained on all hosts.
 - HomeLab records updated after successful migration.
 
-Use the workflow_dispatch version input to build release artifacts. The workflow
-never publishes automatically. Keep dated execution evidence in the private
+Use the workflow_dispatch version input to build candidate artifacts without
+publishing. Pushing a stable `vX.Y.Z` tag publishes automatically after CI succeeds.
+The release starts as a draft and is published only after every asset is uploaded.
+Published releases are immutable on workflow reruns. macOS packages are unsigned
+and not notarized; Windows installers are unsigned. CI uses its scoped GitHub
+token for publication and requires no signing keys. Keep dated execution evidence in the private
 HomeLab task record rather than this public repository.

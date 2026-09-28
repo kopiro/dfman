@@ -58,23 +58,31 @@ func installAgent(ctx context.Context, exe, config, state string, c Config, out 
 func uninstallAgent(ctx context.Context, out io.Writer) error {
 	h, _ := os.UserHomeDir()
 	dir := filepath.Join(h, ".config", "systemd", "user")
-	if _, e := os.Stat(filepath.Join(dir, "dfman-agent.timer")); e == nil {
-		if _, e = runCommand(ctx, "", nil, "systemctl", "--user", "disable", "--now", "dfman-agent.timer"); e != nil {
-			return e
+	_, busErr := runCommand(ctx, "", nil, "systemctl", "--user", "show-environment")
+	if busErr == nil {
+		if _, e := os.Stat(filepath.Join(dir, "dfman-agent.timer")); e == nil {
+			if _, e = runCommand(ctx, "", nil, "systemctl", "--user", "disable", "--now", "dfman-agent.timer"); e != nil {
+				return e
+			}
+		}
+		if _, e := runCommand(ctx, "", nil, "systemctl", "--user", "is-active", "dfman-agent.service"); e == nil {
+			if _, e = runCommand(ctx, "", nil, "systemctl", "--user", "stop", "dfman-agent.service"); e != nil {
+				return e
+			}
 		}
 	}
-	if _, e := runCommand(ctx, "", nil, "systemctl", "--user", "is-active", "dfman-agent.service"); e == nil {
-		if _, e = runCommand(ctx, "", nil, "systemctl", "--user", "stop", "dfman-agent.service"); e != nil {
-			return e
-		}
+	if e := os.Remove(filepath.Join(dir, "graphical-session.target.wants", "dfman-agent.timer")); e != nil && !os.IsNotExist(e) {
+		return e
 	}
 	for _, n := range []string{"dfman-agent.timer", "dfman-agent.service"} {
 		if e := os.Remove(filepath.Join(dir, n)); e != nil && !os.IsNotExist(e) {
 			return e
 		}
 	}
-	if _, e := runCommand(ctx, "", nil, "systemctl", "--user", "daemon-reload"); e != nil {
-		return e
+	if busErr == nil {
+		if _, e := runCommand(ctx, "", nil, "systemctl", "--user", "daemon-reload"); e != nil {
+			return e
+		}
 	}
 	fmt.Fprintln(out, "Agent uninstalled.")
 	return nil

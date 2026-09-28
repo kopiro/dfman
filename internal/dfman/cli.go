@@ -213,12 +213,15 @@ func Execute(args []string, version string, in io.Reader, out, errOut io.Writer)
 	status := &cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error { return printStatus(state, ack, out) }}
 	status.Flags().BoolVar(&ack, "ack", false, "Dismiss recovery notices")
 	root.AddCommand(status)
-	agent := &cobra.Command{Use: "agent"}
+	agent := &cobra.Command{Use: "agent", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return cmd.Help() }}
 	root.AddCommand(agent)
-	for _, action := range []string{"install", "uninstall", "run", "status"} {
+	for _, action := range []string{"uninstall", "run", "status"} {
 		action := action
 		agent.AddCommand(&cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			if action == "uninstall" {
+				if e := writeAtomic(filepath.Join(state, "agent-disabled"), []byte("disabled"), 0600); e != nil {
+					return e
+				}
 				return uninstallAgent(cmd.Context(), out)
 			}
 			if action == "status" {
@@ -236,61 +239,35 @@ func Execute(args []string, version string, in io.Reader, out, errOut io.Writer)
 				}
 				return e
 			}
-			if _, e = c.Selected(""); e != nil {
-				if action == "run" {
-					return agentConfigError(cmd.Context(), state, e, out)
+			if len(c.Folders) > 0 {
+				if _, e = c.Selected(""); e != nil {
+					if action == "run" {
+						return agentConfigError(cmd.Context(), state, e, out)
+					}
+					return e
 				}
-				return e
 			}
-			if action == "install" {
-				exe, e := os.Executable()
-				if e != nil {
-					return e
-				}
-				exe, e = filepath.EvalSymlinks(exe)
-				if e != nil {
-					return e
-				}
-				absConfig, e := filepath.Abs(configFile)
-				if e != nil {
-					return e
-				}
-				absState, e := filepath.Abs(state)
-				if e != nil {
-					return e
-				}
-				if e = installAgent(cmd.Context(), exe, absConfig, absState, c, out); e != nil {
-					return e
-				}
-				return writeAtomic(filepath.Join(state, "agent-notification"), []byte(fmt.Sprint(c.Notification)), 0600)
-			}
-			return runAgent(cmd.Context(), c, state, out, desktopNotify)
+
+			return runAgent(cmd.Context(), c, state, out, desktopNotify, version)
 		}})
 	}
-	shell := &cobra.Command{Use: "shell"}
-	root.AddCommand(shell)
-	for _, action := range []string{"init", "install", "uninstall", "status"} {
+	packageCmd := &cobra.Command{Use: "_package", Hidden: true}
+	for _, action := range []string{"setup", "login", "remove"} {
 		action := action
-		shell.AddCommand(&cobra.Command{Use: action + " [zsh]", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 && args[0] != "zsh" {
-				return fmt.Errorf("shell integration supports zsh")
+		packageCmd.AddCommand(&cobra.Command{Use: action, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			if action == "remove" {
+				return removePackageAgent(cmd.Context(), state, out)
 			}
-			switch action {
-			case "init":
-				fmt.Fprint(out, shellInit)
-				return nil
-			case "status":
-				_, p, e := statusText(state, false)
-				if e != nil {
-					return e
-				}
-				fmt.Fprint(out, p)
-				return nil
-			default:
-				return shellInstall(action, out)
+			err := setupPackageAgent(cmd.Context(), configFile, state, out, action == "setup")
+			if err != nil {
+				_ = reportProblem(state, "setup", err.Error())
+			} else {
+				_ = reportProblem(state, "setup", "")
 			}
+			return err
 		}})
 	}
+	root.AddCommand(packageCmd)
 	self := &cobra.Command{Use: "self"}
 	var check bool
 	update := &cobra.Command{Use: "update", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error { return SelfUpdate(cmd.Context(), version, check, out) }}

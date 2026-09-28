@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+# Package payload is global; user configuration and registration belong to the
+# signed-in desktop user. Future desktop logins run the setup LaunchAgent.
+user=$(stat -f '%Su' /dev/console)
+if [[ "$user" != root && "$user" != loginwindow && "$user" != _mbsetupuser ]]; then
+ uid=$(id -u "$user")
+ home=$(dscl . -read "/Users/$user" NFSHomeDirectory | cut -d ' ' -f2-)
+ if ! launchctl asuser "$uid" sudo -H -u "$user" env HOME="$home" /usr/local/libexec/dfman/dfman _package setup; then
+  echo "dfman: desktop setup is pending. Check dfman status, correct configuration if needed, then sign out and back in." >&2
+ fi
+fi
+exit 0

@@ -13,7 +13,7 @@ import (
 
 type notifier func(context.Context, string, string, string) error
 
-func runAgent(ctx context.Context, c Config, state string, out io.Writer, notify notifier) error {
+func runAgent(ctx context.Context, c Config, state string, out io.Writer, notify notifier, version string) error {
 	if e := os.MkdirAll(state, 0700); e != nil {
 		return e
 	}
@@ -39,16 +39,21 @@ func runAgent(ctx context.Context, c Config, state string, out io.Writer, notify
 	defer log.Close()
 	w := io.MultiWriter(log, out)
 	fmt.Fprintln(w, "Started:", time.Now().Format(time.RFC3339))
-	folders, e := c.Selected("")
-	if e != nil {
-		return e
+	var folders []Folder
+	if len(c.Folders) > 0 {
+		folders, e = c.Selected("")
+		if e != nil {
+			return e
+		}
+	} else {
+		fmt.Fprintln(w, "No folders configured; agent is idle.")
 	}
 	results := Sync(ctx, folders, c.Agent.SyncMode == "reset", "")
 	code := resultCode(results)
 	if e = recordResults(state, results); e != nil {
 		return e
 	}
-	if code == 0 {
+	if code == 0 && len(folders) > 0 {
 		e = Link(folders, LinkOptions{Input: strings.NewReader(""), Output: w})
 		detail := ""
 		if e != nil {
@@ -110,6 +115,12 @@ func runAgent(ctx context.Context, c Config, state string, out io.Writer, notify
 	if delivered || len(notifyErrors) > 0 {
 		if e = reportProblem(state, "notification", strings.Join(notifyErrors, "\n")); e != nil {
 			return e
+		}
+	}
+	if c.Notification {
+		if err := agentUpdateNotice(ctx, version, state, w, notify, latestRelease, time.Now()); err != nil {
+			fmt.Fprintln(w, "Update check:", err)
+			_ = reportProblem(state, "update-check", err.Error())
 		}
 	}
 	fmt.Fprintf(w, "Finished: exit=%d\n", code)

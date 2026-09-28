@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+[ "$1" = configure ] || exit 0
+# No root-owned files are written into home directories. The login hook handles
+# users without a current graphical session, including installs over SSH.
+getent passwd | while IFS=: read -r user password uid gid gecos home shell; do
+ [ "$uid" -ge 1000 ] && [ "$uid" -lt 65534 ] || continue
+ [ -S "/run/user/$uid/bus" ] || continue
+ if runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" systemctl --user is-active --quiet graphical-session.target; then
+  runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" /usr/lib/dfman/dfman _package setup || echo "dfman: setup pending for $user; check dfman status and sign in again after correcting configuration." >&2
+ fi
+done

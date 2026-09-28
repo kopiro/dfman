@@ -298,16 +298,16 @@ func TestAgentNotificationsAndManualSilence(t *testing.T) {
 	state := filepath.Join(f.dir, "state")
 	calls := 0
 	notify := func(context.Context, string, string, string) error { calls++; return nil }
-	if e := runAgent(context.Background(), c, state, io.Discard, notify); e != nil || calls != 0 {
+	if e := runAgent(context.Background(), c, state, io.Discard, notify, ""); e != nil || calls != 0 {
 		t.Fatalf("noop: %v %d", e, calls)
 	}
 	put(t, filepath.Join(f.local, "dotfiles", ".test"), "change")
-	if e := runAgent(context.Background(), c, state, io.Discard, notify); e != nil || calls != 1 {
+	if e := runAgent(context.Background(), c, state, io.Discard, notify, ""); e != nil || calls != 1 {
 		t.Fatalf("push: %v %d", e, calls)
 	}
 	g(t, f.local, "remote", "set-url", "origin", filepath.Join(f.dir, "missing"))
 	for i := 0; i < 2; i++ {
-		if e := runAgent(context.Background(), c, state, io.Discard, notify); e == nil {
+		if e := runAgent(context.Background(), c, state, io.Discard, notify, ""); e == nil {
 			t.Fatal("expected error")
 		}
 	}
@@ -315,12 +315,12 @@ func TestAgentNotificationsAndManualSilence(t *testing.T) {
 		t.Fatal("repeated error", calls)
 	}
 	g(t, f.local, "remote", "set-url", "origin", f.remote)
-	if e := runAgent(context.Background(), c, state, io.Discard, notify); e != nil {
+	if e := runAgent(context.Background(), c, state, io.Discard, notify, ""); e != nil {
 		t.Fatal(e)
 	}
 	put(t, filepath.Join(f.local, "dotfiles", ".test"), "next")
 	fail := func(context.Context, string, string, string) error { return errors.New("notification unavailable") }
-	if e := runAgent(context.Background(), c, state, io.Discard, fail); e != nil {
+	if e := runAgent(context.Background(), c, state, io.Discard, fail, ""); e != nil {
 		t.Fatal("notification changed Git result", e)
 	}
 	s, _, _ := statusText(state, false)
@@ -436,7 +436,7 @@ func testExecutable(t *testing.T) string {
 }
 
 func TestAgentInvalidConfigRecordsError(t *testing.T) {
-	for _, contents := range []string{"~/legacy", "notification=false\n", "[agent]\ninterval='61s'\n"} {
+	for _, contents := range []string{"~/legacy", "[agent]\ninterval='61s'\n"} {
 		d := t.TempDir()
 		p := filepath.Join(d, "config")
 		put(t, p, contents)

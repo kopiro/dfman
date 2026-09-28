@@ -39,6 +39,6 @@ func installUpdate(ctx context.Context, payload, dest string, out io.Writer) (bo
 		}
 		installed = append(installed, n)
 	}
-	fmt.Fprintln(out, "Update installed. Run dfman agent install if you use the agent.")
+	fmt.Fprintln(out, "Update installed.")
 	return false, nil
 }

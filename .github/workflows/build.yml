@@ -1,12 +1,14 @@
 name: Build and test
 on:
   push:
+    branches: [main]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
     inputs:
       version:
         description: Package version (does not publish a release)
-        default: dev
+        default: v0.0.0
         required: true
 permissions:
   contents: read
@@ -35,7 +37,7 @@ jobs:
           - {os: windows-latest, platform: windows, arch: amd64, msvc: amd64}
     runs-on: ${{ matrix.os }}
     env:
-      DFMAN_VERSION: ${{ inputs.version || 'dev' }}
+      DFMAN_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.version || 'v0.0.0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -54,10 +56,26 @@ jobs:
         run: GOOS=linux GOARCH=${{ matrix.arch }} CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$DFMAN_VERSION" -o dist/linux-${{ matrix.arch }}/dfman ./cmd/dfman
       - shell: bash
         run: python3 scripts/package.py "$DFMAN_VERSION" ${{ matrix.platform }}-${{ matrix.arch }}
+      - if: matrix.platform == 'darwin'
+        run: bash scripts/package-macos.sh "$DFMAN_VERSION" ${{ matrix.arch }}
+      - if: matrix.platform == 'linux'
+        run: bash scripts/package-linux.sh "$DFMAN_VERSION" ${{ matrix.arch }}
+      - if: matrix.platform == 'windows'
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -Version $env:DFMAN_VERSION -Arch ${{ matrix.arch }}
+      - if: matrix.platform == 'darwin' || (matrix.platform == 'linux' && matrix.arch == 'amd64')
+        run: bash scripts/smoke-package.sh "$DFMAN_VERSION" ${{ matrix.arch }}
+      - if: matrix.platform == 'windows' && matrix.arch == 'amd64'
+        shell: pwsh
+        run: ./scripts/smoke-package-windows.ps1 -Version $env:DFMAN_VERSION
       - uses: actions/upload-artifact@v4
         with:
           name: dfman-${{ matrix.platform }}-${{ matrix.arch }}
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.pkg
+            dist/*.deb
+            dist/*_setup.exe
   checksums:
     needs: [test, package]
     runs-on: ubuntu-latest
@@ -67,8 +85,38 @@ jobs:
           pattern: dfman-*
           merge-multiple: true
           path: packages
-      - run: cd packages && sha256sum *.zip > checksums.txt
+      - run: cd packages && sha256sum *.zip *.pkg *.deb *.exe > checksums.txt
       - uses: actions/upload-artifact@v4
         with:
           name: release-packages
           path: packages/*
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: checksums
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: packages
+      - name: Publish tested packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Expected vX.Y.Z"; exit 1; }
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --verify-tag --draft --generate-notes --title "$RELEASE_TAG"
+          fi
+          # Do not mutate an already published release on workflow reruns.
+          [[ "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" == true ]] || exit 0
+          gh release upload "$RELEASE_TAG" packages/* --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
