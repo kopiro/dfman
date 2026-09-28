@@ -35,7 +35,6 @@ ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "{#ProjectRoot}\dist\windows-{#Arch}\dfman.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ProjectRoot}\dist\windows-{#Arch}\dfman-notify.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#SourcePath}\.dfman-package"; DestDir: "{app}"; Flags: ignoreversion
 
 [UninstallRun]
 Filename: "{app}\dfman.exe"; Parameters: "_package remove"; Flags: runhidden waituntilterminated; RunOnceId: "RemoveAgent"

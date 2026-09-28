@@ -69,7 +69,7 @@ func LoadConfig(path string) (Config, error) {
 	dec := toml.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if e = dec.Decode(&c); e != nil {
-		return c, fmt.Errorf("%s: invalid TOML configuration (legacy line-based configs are unsupported): %w", path, e)
+		return c, fmt.Errorf("%s: invalid TOML configuration: %w", path, e)
 	}
 	if _, e = c.Interval(); e != nil {
 		return c, e

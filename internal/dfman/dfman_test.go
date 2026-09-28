@@ -2,7 +2,6 @@ package dfman
 
 import (
 	"archive/tar"
-	"archive/zip"
 	"bytes"
 	"context"
 	"errors"
@@ -343,28 +342,6 @@ func TestAgentNotificationsAndManualSilence(t *testing.T) {
 		t.Fatal("manual command invoked notifier")
 	}
 }
-func TestArchiveAndChecksums(t *testing.T) {
-	if verifyChecksum([]byte("x"), []byte(hash("x")+"  file.zip\n"), "file.zip") != nil {
-		t.Fatal("valid hash")
-	}
-	if verifyChecksum([]byte("tampered"), []byte(hash("x")+"  file.zip\n"), "file.zip") == nil {
-		t.Fatal("bad hash")
-	}
-	for _, name := range []string{"../escape", "/absolute", `C:\evil`} {
-		d := t.TempDir()
-		p := filepath.Join(d, "a.zip")
-		f, _ := os.Create(p)
-		z := zip.NewWriter(f)
-		w, _ := z.Create(name)
-		w.Write([]byte("x"))
-		z.Close()
-		f.Close()
-		if extractPackage(p, filepath.Join(d, "output")) == nil {
-			t.Fatal("accepted traversal", name)
-		}
-	}
-}
-
 func TestRecoveryNoticeSurvivesInterruptedReport(t *testing.T) {
 	f := setup(t)
 	put(t, filepath.Join(f.local, "dotfiles", ".test"), "dirty")
@@ -436,7 +413,7 @@ func testExecutable(t *testing.T) string {
 }
 
 func TestAgentInvalidConfigRecordsError(t *testing.T) {
-	for _, contents := range []string{"~/legacy", "[agent]\ninterval='61s'\n"} {
+	for _, contents := range []string{"invalid TOML", "[agent]\ninterval='61s'\n"} {
 		d := t.TempDir()
 		p := filepath.Join(d, "config")
 		put(t, p, contents)

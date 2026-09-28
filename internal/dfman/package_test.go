@@ -30,12 +30,12 @@ func TestEmptyAgentConfigIsIdle(t *testing.T) {
 func TestPackageSetupPreservesInvalidConfig(t *testing.T) {
 	d := t.TempDir()
 	config := filepath.Join(d, "config")
-	put(t, config, "old config\n")
+	put(t, config, "invalid config\n")
 	if code := Execute([]string{"--config", config, "--state-dir", filepath.Join(d, "state"), "_package", "setup"}, "dev", nil, io.Discard, io.Discard); code == 0 {
 		t.Fatal("accepted invalid config")
 	}
 	b, err := os.ReadFile(config)
-	if err != nil || string(b) != "old config\n" {
+	if err != nil || string(b) != "invalid config\n" {
 		t.Fatal("config overwritten", err)
 	}
 }
@@ -60,68 +60,5 @@ func TestAgentGroupRemoved(t *testing.T) {
 		if Execute(args, "dev", nil, io.Discard, io.Discard) == 0 {
 			t.Fatal(args)
 		}
-	}
-}
-
-func TestMigrateLegacyCommand(t *testing.T) {
-	for _, kind := range []string{"script", "symlink", "dangling", "directory"} {
-		t.Run(kind, func(t *testing.T) {
-			d := t.TempDir()
-			exe := filepath.Join(d, "packaged")
-			old := filepath.Join(d, "dfman")
-			state := filepath.Join(d, "state")
-			put(t, exe, "new")
-			switch kind {
-			case "script":
-				put(t, old, "#!/bin/bash\necho old\n")
-			case "directory":
-				if err := os.Mkdir(old, 0700); err != nil {
-					t.Fatal(err)
-				}
-			default:
-				target := filepath.Join(d, "previous")
-				if kind == "symlink" {
-					put(t, target, "old")
-				}
-				if err := os.Symlink(target, old); err != nil {
-					t.Skip(err)
-				}
-			}
-			err := migrateCommandPath(exe, old, state)
-			if kind == "directory" {
-				if err == nil {
-					t.Fatal("moved directory")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			if target, err := os.Readlink(old); err != nil || target != exe {
-				t.Fatal(target, err)
-			}
-			backups, _ := filepath.Glob(filepath.Join(state, "package-backup", "*", "dfman"))
-			if len(backups) != 1 {
-				t.Fatal(backups)
-			}
-			if kind == "script" {
-				b, err := os.ReadFile(backups[0])
-				if err != nil || string(b) != "#!/bin/bash\necho old\n" {
-					t.Fatal("lost backup", err)
-				}
-			} else {
-				target, err := os.Readlink(backups[0])
-				if err != nil || target != filepath.Join(d, "previous") {
-					t.Fatal("lost symlink", err)
-				}
-			}
-			if err := migrateCommandPath(exe, old, state); err != nil {
-				t.Fatal(err)
-			}
-			again, _ := filepath.Glob(filepath.Join(state, "package-backup", "*", "dfman"))
-			if len(again) != 1 {
-				t.Fatal("reinstall created extra backup")
-			}
-		})
 	}
 }

@@ -3,6 +3,6 @@ set -eu
 case "$1" in remove|deconfigure) ;; *) exit 0;; esac
 getent passwd | while IFS=: read -r user password uid gid gecos home shell; do
  [ "$uid" -ge 1000 ] && [ "$uid" -lt 65534 ] || continue
- [ -f "$home/.config/systemd/user/dfman-agent.service" ] || [ "$(readlink "$home/.local/bin/dfman" 2>/dev/null || true)" = /usr/lib/dfman/dfman ] || continue
+ [ -f "$home/.config/systemd/user/dfman-agent.service" ] || continue
  runuser -u "$user" -- env HOME="$home" XDG_RUNTIME_DIR="/run/user/$uid" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" /usr/lib/dfman/dfman _package remove
 done

@@ -89,10 +89,7 @@ func agentUpdateNotice(ctx context.Context, current, state string, out io.Writer
 	if !newerRelease(r.Tag, current) || cache.Notified == r.Tag {
 		return nil
 	}
-	body := r.Tag + " is available. Run dfman self update to install."
-	if packageKind() != "" {
-		body = r.Tag + " is available. Download the installer from github.com/kopiro/dfman/releases."
-	}
+	body := r.Tag + " is available. Download the installer from github.com/kopiro/dfman/releases."
 	if err := notify(ctx, "dfman update available", body, hash("update")); err != nil {
 		return fmt.Errorf("update notification: %w", err)
 	}

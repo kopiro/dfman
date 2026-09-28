@@ -25,9 +25,6 @@ macOS packages are currently **unsigned and not notarized**. Windows installers
 are unsigned as well. Operating systems may display an unverified-publisher
 warning. No signing keys or notarization credentials are used in CI.
 
-The repository's `install.sh` and `install.ps1` download the native installer,
-verify its checksum, and run it. Releases contain native installers only.
-
 The Windows desktop agent needs Developer Mode for native symlinks from its
 non-elevated session. Manual linking can also use symlink privilege. Links are native symlinks;
 dfman never substitutes copies. Clone symlink-bearing repositories using
@@ -56,9 +53,8 @@ source = "~/.prefs/dotfiles"
 The first folder wins when link destinations overlap. `target` defaults to `~`.
 Paths must be absolute or start with `~`; spaces are supported. On Windows,
 use forward slashes in double-quoted strings or literal TOML strings such as
-`source = 'C:\Users\name\dotfiles'`. Git Bash `/c/...` paths are not native paths.
-Unknown options, invalid intervals, and legacy line-based configurations are
-rejected before synchronization. Run `dfman config validate` after editing.
+`source = 'C:\Users\name\dotfiles'`.
+Unknown options and invalid configuration are rejected before synchronization. Run `dfman config validate` after editing.
 
 `notification` affects agents only. `sync_mode` is `normal` or `reset`.
 Intervals are whole minutes from `1m` through `24h`. Rerun the installer after
@@ -83,7 +79,6 @@ dfman self update [--check]
 ```
 
 Global `--config <file>` and `--state-dir <directory>` support isolated setups.
-Hyphenated command names and the old auto-sync runner have been removed.
 
 ### Linking
 
@@ -151,15 +146,9 @@ enabled. It notifies once per newer version with installation instructions.
 Update-check failures appear in status without changing the sync result.
 Updates are never installed automatically.
 
-Use `dfman self update --check` to check manually. For package installations,
-download and run the newer installer. Older portable installations must also
-migrate using an installer; ZIP updates are no longer published.
-
-## Migrating from Bash
-
-This is a breaking release. See [MIGRATION.md](MIGRATION.md) for configuration,
-command, scheduler, and rollback steps. Do not point a raw-script updater at the
-native executable.
+Use `dfman self update --check` to check manually. `dfman self update` reports
+the available version and directs you to its installer. Install updates using
+the native package for your platform.
 
 ## Build and test
 

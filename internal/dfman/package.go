@@ -66,99 +66,12 @@ func setupPackageAgent(ctx context.Context, config, state string, out io.Writer)
 	if err != nil {
 		return err
 	}
-	if err := migratePortableBinary(exe, state); err != nil {
-		return err
-	}
 	if err := installAgent(ctx, exe, config, state, c, out); err != nil {
 		return err
 	}
 	return writeAtomic(filepath.Join(state, "agent-notification"), []byte(fmt.Sprint(c.Notification)), 0600)
 }
 
-func packageKind() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return ""
-	}
-	b, _ := os.ReadFile(filepath.Join(filepath.Dir(exe), ".dfman-package"))
-	return string(b)
-}
-
-// Avoid an older portable Go binary shadowing the system package on PATH.
-// The installer owns the dfman command path; preserve the old entry for rollback.
-func migratePortableBinary(exe, state string) error {
-	if runtime.GOOS == "windows" || packageKind() == "" {
-		return nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	return migrateCommandPath(exe, filepath.Join(home, ".local", "bin", "dfman"), state)
-}
-
-func migrateCommandPath(exe, old, state string) error {
-	info, err := os.Lstat(old)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
-		return fmt.Errorf("%s is not a file or symlink; move it aside before reinstalling", old)
-	}
-	if oldInfo, err := os.Stat(old); err == nil {
-		if exeInfo, err := os.Stat(exe); err == nil && os.SameFile(oldInfo, exeInfo) {
-			return nil
-		}
-	}
-	root := filepath.Join(state, "package-backup")
-	if err := os.MkdirAll(root, 0700); err != nil {
-		return err
-	}
-	backupDir, err := os.MkdirTemp(root, "command-")
-	if err != nil {
-		return err
-	}
-	backup := filepath.Join(backupDir, "dfman")
-	if err := os.Rename(old, backup); err != nil {
-		return err
-	}
-	if err := os.Symlink(exe, old); err != nil {
-		_ = os.Rename(backup, old)
-		return err
-	}
-	return nil
-}
-
 func removePackageAgent(ctx context.Context, state string, out io.Writer) error {
-	if err := uninstallAgent(ctx, out); err != nil {
-		return err
-	}
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	exe, err = filepath.EvalSymlinks(exe)
-	if err != nil {
-		return err
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return err
-	}
-	alias := filepath.Join(home, ".local", "bin", "dfman")
-	target, err := os.Readlink(alias)
-	if err == nil && target == exe {
-		return os.Remove(alias)
-	}
-	return nil
+	return uninstallAgent(ctx, out)
 }

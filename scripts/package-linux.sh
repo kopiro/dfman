@@ -8,7 +8,6 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir -p "$tmp/DEBIAN" "$tmp/usr/lib/dfman" "$tmp/usr/bin" "$tmp/etc/xdg/autostart"
 cp "dist/linux-$arch/dfman" "$tmp/usr/lib/dfman/dfman"
-printf 'deb\n' > "$tmp/usr/lib/dfman/.dfman-package"
 ln -s ../lib/dfman/dfman "$tmp/usr/bin/dfman"
 cp packaging/linux/dfman.desktop "$tmp/etc/xdg/autostart/dfman.desktop"
 cp packaging/linux/postinst packaging/linux/prerm "$tmp/DEBIAN/"

@@ -9,13 +9,13 @@ satisfy the desktop validation gate.
 - SHA-256 manifest covering every package.
 - OttoMini: isolated Git/link tests, LaunchAgent install/reinstall/uninstall,
   configured interval, native UserNotifications delivery, error reporting,
-  real configuration migration and scheduled sync in normal mode.
+  configuration preservation and scheduled sync in normal mode.
 - KoBuntu: equivalent tests using the systemd graphical session and D-Bus,
   preserving reset mode.
 - KoWin: equivalent tests using an interactive Task Scheduler session and
   native toast history, preserving reset mode and repository-local SSH settings.
-- Old scheduler removed without duplicate work; backups retained on all hosts.
-- HomeLab records updated after successful migration.
+- Package upgrades replace scheduling without duplicate jobs.
+- HomeLab records updated after successful installation.
 
 Use the workflow_dispatch version input to build candidate artifacts without
 publishing. Pushing a stable `vX.Y.Z` tag publishes automatically after CI succeeds.

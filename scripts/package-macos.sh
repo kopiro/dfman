@@ -9,7 +9,6 @@ trap 'rm -rf "$tmp"' EXIT
 root="$tmp/root"
 mkdir -p "$root/usr/local/libexec/dfman" "$root/usr/local/bin" "$root/Library/LaunchAgents"
 cp -R "dist/darwin-$arch/." "$root/usr/local/libexec/dfman/"
-printf 'pkg\n' > "$root/usr/local/libexec/dfman/.dfman-package"
 cp packaging/macos/uninstall.sh "$root/usr/local/libexec/dfman/uninstall"
 chmod 755 "$root/usr/local/libexec/dfman/uninstall"
 ln -s ../libexec/dfman/dfman "$root/usr/local/bin/dfman"
