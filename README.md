@@ -88,6 +88,22 @@ Paths must be absolute or start with `~`.
 
 ## Commands
 
+### `dfman list`
+
+Lists dotfiles grouped by repository in configuration order, showing each source
+entry and its destination path. Encoded `#` separators are expanded to `/` in
+destinations. Directories are listed as a single entry, matching `dfman link`.
+Listing does not create or change any links.
+
+```bash
+dfman list
+dfman list --repo '~/.work-dotfiles'
+```
+
+In a terminal, repository headings are cyan, files green, directories blue, and
+symlinks magenta. Output is plain text when redirected, when `TERM=dumb`, or
+when `NO_COLOR` is nonempty. Empty repositories are shown as `(no dotfiles)`.
+
 ### `dfman link`
 
 Links files from configured source repos into their target directories. When

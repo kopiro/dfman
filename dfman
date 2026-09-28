@@ -8,12 +8,13 @@ CONFIG_SOURCES=()
 CONFIG_TARGETS=()
 
 usage() {
-    echo "Usage: dfman <create|link|doctor|repo-add|repo-rm|repo-sync|sync|status|shell|self-update> [options]"
+    echo "Usage: dfman <create|list|link|doctor|repo-add|repo-rm|repo-sync|sync|status|shell|self-update> [options]"
     echo ""
     echo "Config:"
     echo "  $CONFIG_FILE"
     echo ""
     echo "Commands:"
+    echo "  list [--repo r]      List dotfiles grouped by repository"
     echo "  link [-f] [-v] [--dry-run] [--repo r] Symlink dotfiles to target directory"
     echo "  create --repo r path Import a file into dotfiles"
     echo "  doctor [--repo repo] Find broken symlinks"
@@ -302,6 +303,70 @@ select_config_for_repo() {
 
     echo "Error: repo is not configured: $repo_arg"
     exit 1
+}
+
+list_source() (
+    local source_dir="$1" target_dir="$2"
+    local dotfile name destination color count=0
+    local reset="" heading="" file_color="" directory_color="" symlink_color=""
+    if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-}" != dumb ]; then
+        reset=$'\033[0m'
+        heading=$'\033[1;36m'
+        file_color=$'\033[32m'
+        directory_color=$'\033[34m'
+        symlink_color=$'\033[35m'
+    fi
+    printf '%sRepository: %s%s\n  Target: %s\n' "$heading" "$source_dir" "$reset" "$target_dir"
+    # Match link's top-level entries, including hidden files and whole directories.
+    # Globbing keeps spaces and newlines in filenames intact and sorts the entries.
+    shopt -s dotglob nullglob
+    for dotfile in "$source_dir"/*; do
+        name="${dotfile##*/}"
+        destination="${target_dir%/}/${name//#//}"
+        color="$file_color"
+        if [ -L "$dotfile" ]; then
+            color="$symlink_color"
+        elif [ -d "$dotfile" ]; then
+            color="$directory_color"
+        fi
+        # Quote unusual characters so filenames cannot inject terminal controls.
+        printf '  %s%q%s -> %q\n' "$color" "$name" "$reset" "$destination"
+        count=$((count + 1))
+    done
+    if [ "$count" -eq 0 ]; then
+        printf '  (no dotfiles)\n'
+    fi
+    printf '\n'
+)
+
+cmd_list() {
+    local repo_arg="" index
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --repo)
+                [ -n "${2:-}" ] || { echo "Usage: dfman list [--repo <source>]"; return 1; }
+                repo_arg="$2"
+                shift 2
+                ;;
+            --repo=*)
+                repo_arg="${1#--repo=}"
+                [ -n "$repo_arg" ] || { echo "Usage: dfman list [--repo <source>]"; return 1; }
+                shift
+                ;;
+            *) echo "Usage: dfman list [--repo <source>]"; return 1 ;;
+        esac
+    done
+    load_config
+    if [ -n "$repo_arg" ]; then
+        select_config_for_repo "$repo_arg"
+        require_source_exists "$SELECTED_SOURCE_DIR"
+        list_source "$SELECTED_SOURCE_DIR" "$SELECTED_TARGET_DIR"
+    else
+        require_all_sources_exist
+        for index in "${!CONFIG_SOURCES[@]}"; do
+            list_source "${CONFIG_SOURCES[$index]}" "${CONFIG_TARGETS[$index]}"
+        done
+    fi
 }
 
 link_source() {
@@ -1358,6 +1423,10 @@ download_update() {
 }
 
 case "${1:-}" in
+    list)
+        shift
+        cmd_list "$@"
+        ;;
     link)
         shift
         cmd_link "$@"
